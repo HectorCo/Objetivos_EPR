@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v4 - unificada)
+// Fincas Blanco - Aplicación principal (v5 - sin listas, resumen auto desde operaciones)
 (function () {
   'use strict';
 
@@ -6,15 +6,12 @@
   const state = {
     year: 2026,
     ops: [],
-    sold: [],
-    rent: [],
+    // Mapa de direcciones asociadas a operaciones: { [opId]: { addr, date, contract, val } }
+    opAddresses: {},
     goals: {},
-    comisiones: [],
-    coefs: [],
     editingOp: null,
-    editingAddress: null,
+    editingAddressOpId: null,   // id de la operación cuya dirección se está editando
     nextId: 1,
-    nextAddrId: 1,
     activeTab: 'dashboard'
   };
 
@@ -23,24 +20,16 @@
     if (year === 2026) {
       return {
         ops: JSON.parse(JSON.stringify(FB.DEFAULT_OPS)),
-        sold: JSON.parse(JSON.stringify(FB.DEFAULT_SOLD)),
-        rent: JSON.parse(JSON.stringify(FB.DEFAULT_RENT)),
+        opAddresses: {},
         goals: Object.assign({}, FB.DEFAULT_GOALS),
-        comisiones: JSON.parse(JSON.stringify(FB.DEFAULT_COMISIONES)),
-        coefs: JSON.parse(JSON.stringify(FB.DEFAULT_COEFS)),
-        nextId: 31,
-        nextAddrId: 22
+        nextId: 31
       };
     }
     return {
       ops: [],
-      sold: [],
-      rent: [],
+      opAddresses: {},
       goals: Object.assign({}, FB.DEFAULT_GOALS),
-      comisiones: JSON.parse(JSON.stringify(FB.DEFAULT_COMISIONES)),
-      coefs: JSON.parse(JSON.stringify(FB.DEFAULT_COEFS)),
-      nextId: 1,
-      nextAddrId: 1
+      nextId: 1
     };
   }
 
@@ -49,13 +38,13 @@
     const data = FB.load(year);
     if (data) {
       state.ops = data.ops || [];
-      state.sold = data.sold || [];
-      state.rent = data.rent || [];
+      state.opAddresses = data.opAddresses || {};
       state.goals = data.goals || Object.assign({}, FB.DEFAULT_GOALS);
-      state.comisiones = data.comisiones || JSON.parse(JSON.stringify(FB.DEFAULT_COMISIONES));
-      state.coefs = data.coefs || JSON.parse(JSON.stringify(FB.DEFAULT_COEFS));
       state.nextId = data.nextId || 1;
-      state.nextAddrId = data.nextAddrId || 1;
+      // Compatibilidad con versiones antiguas que guardaban sold/rent por separado
+      if (data.sold && !Object.keys(state.opAddresses).length) {
+        // migración suave: se ignoran, el usuario las reintroducirá vinculadas a operaciones
+      }
     } else {
       const def = buildDefaultData(year);
       Object.assign(state, def);
@@ -65,13 +54,9 @@
   function saveState() {
     FB.save(state.year, {
       ops: state.ops,
-      sold: state.sold,
-      rent: state.rent,
+      opAddresses: state.opAddresses,
       goals: state.goals,
-      comisiones: state.comisiones,
-      coefs: state.coefs,
-      nextId: state.nextId,
-      nextAddrId: state.nextAddrId
+      nextId: state.nextId
     });
   }
 
@@ -83,9 +68,7 @@
     renderDashboard();
     renderOperaciones();
     renderResumen();
-    renderListas();
     renderConfig();
-    // renderGraficos se llama al cambiar a la pestaña gráficos (evita ancho 0)
     setupServiceWorker();
   }
 
@@ -129,9 +112,9 @@
     state.activeTab = tabName;
     document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
     document.querySelectorAll('.fb-section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + tabName));
-    // Renderizar gráficos solo cuando la sección ya está visible
     if (tabName === 'dashboard') setTimeout(renderDashboard, 0);
     if (tabName === 'graficos') setTimeout(renderGraficos, 0);
+    if (tabName === 'resumen') setTimeout(renderResumen, 0);
   }
 
   function setupServiceWorker() {
@@ -144,7 +127,6 @@
     renderDashboard();
     renderOperaciones();
     renderResumen();
-    renderListas();
     renderConfig();
     if (state.activeTab === 'graficos') renderGraficos();
     updateYearDisplay();
@@ -329,95 +311,91 @@
         + '</div></div>';
     }
 
+    // Tabla de inmuebles vendidos (derivada de operaciones VENTA)
     const soldTable = document.getElementById('dir-vendidas');
     if (soldTable) {
-      let tbody = state.sold.map((s, i) =>
-        '<tr>'
-        + '<td>' + FB.fmtDateEU(s.date) + '</td>'
-        + '<td>' + s.addr + '</td>'
-        + '<td class="num">' + FB.fmt(s.val) + '</td>'
-        + '<td class="num" style="width:70px"><span class="fb-row-actions">'
-        + '<button class="fb-btn fb-btn-sm" onclick="App.editSold(' + i + ')">editar</button>'
-        + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delSold(' + i + ')">×</button>'
-        + '</span></td></tr>'
-      ).join('');
-      if (state.editingAddress && state.editingAddress.type === 'sold' && state.editingAddress.index === -1) {
-        tbody += renderAddressEditRow('sold', -1, { date: '', addr: '', val: 0 });
+      const ventas = state.ops.filter(o => o.type === 'VENTA PISO' || o.type === 'VENTA LOCAL' || o.type === 'VENTA PARKING');
+      let tbody = '';
+      if (ventas.length === 0) {
+        tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de venta. añádelas en la pestaña "operaciones".</td></tr>';
+      } else {
+        ventas.forEach(op => {
+          const addrData = state.opAddresses[op.id] || {};
+          const isEditing = state.editingAddressOpId === op.id;
+          if (isEditing) {
+            tbody += renderAddressEditRow(op, addrData);
+          } else {
+            tbody += renderSoldRow(op, addrData);
+          }
+        });
       }
-      soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th class="num">valor</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
+      soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
     }
 
+    // Tabla de inmuebles alquilados (derivada de operaciones ALQUILER)
     const rentTable = document.getElementById('dir-alquiladas');
     if (rentTable) {
-      let tbody = state.rent.map((r, i) =>
-        '<tr>'
-        + '<td>' + FB.fmtDateEU(r.date) + '</td>'
-        + '<td>' + r.addr + '</td>'
-        + '<td class="num">' + FB.fmt(r.contract) + '</td>'
-        + '<td class="num">' + FB.fmt(r.val) + '</td>'
-        + '<td class="num" style="width:70px"><span class="fb-row-actions">'
-        + '<button class="fb-btn fb-btn-sm" onclick="App.editRent(' + i + ')">editar</button>'
-        + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delRent(' + i + ')">×</button>'
-        + '</span></td></tr>'
-      ).join('');
-      if (state.editingAddress && state.editingAddress.type === 'rent' && state.editingAddress.index === -1) {
-        tbody += renderAddressEditRow('rent', -1, { date: '', addr: '', contract: 0, val: 0 });
+      const alquileres = state.ops.filter(o => o.type === 'ALQUILER');
+      let tbody = '';
+      if (alquileres.length === 0) {
+        tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler. añádelas en la pestaña "operaciones".</td></tr>';
+      } else {
+        alquileres.forEach(op => {
+          const addrData = state.opAddresses[op.id] || {};
+          const isEditing = state.editingAddressOpId === op.id;
+          if (isEditing) {
+            tbody += renderAddressEditRow(op, addrData);
+          } else {
+            tbody += renderRentRow(op, addrData);
+          }
+        });
       }
-      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th class="num">contrato</th><th class="num">valor</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
+      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
     }
   }
 
-  function renderAddressEditRow(type, index, data) {
-    const isRent = type === 'rent';
-    const dateVal = data.date ? FB.fmtDateEU(data.date) : '';
+  function renderSoldRow(op, addrData) {
+    const addr = addrData.addr || '<span class="fb-muted">— sin dirección —</span>';
+    const date = addrData.date ? FB.fmtDateEU(addrData.date) : '<span class="fb-muted">—</span>';
+    const badgeClass = {
+      'VENTA PISO': 'fb-badge-piso',
+      'VENTA LOCAL': 'fb-badge-local',
+      'VENTA PARKING': 'fb-badge-parking'
+    }[op.type] || 'fb-badge-piso';
+    return '<tr>'
+      + '<td>' + date + '</td>'
+      + '<td>' + addr + '</td>'
+      + '<td><span class="fb-badge ' + badgeClass + '">' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</span></td>'
+      + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
+      + '<td class="num" style="width:80px"><span class="fb-row-actions">'
+      + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+      + '</span></td></tr>';
+  }
+
+  function renderRentRow(op, addrData) {
+    const addr = addrData.addr || '<span class="fb-muted">— sin dirección —</span>';
+    const date = addrData.date ? FB.fmtDateEU(addrData.date) : '<span class="fb-muted">—</span>';
+    return '<tr>'
+      + '<td>' + date + '</td>'
+      + '<td>' + addr + '</td>'
+      + '<td><span class="fb-badge fb-badge-alq">alquiler</span></td>'
+      + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
+      + '<td class="num" style="width:80px"><span class="fb-row-actions">'
+      + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+      + '</span></td></tr>';
+  }
+
+  function renderAddressEditRow(op, addrData) {
+    const dateVal = addrData.date ? FB.fmtDateEU(addrData.date) : '';
+    const isRent = op.type === 'ALQUILER';
     return '<tr class="fb-edit-row">'
-      + '<td><input class="fb-input" id="addr-date-' + type + '-' + index + '" type="text" value="' + dateVal + '" placeholder="DD-MM-AAAA" style="min-width:110px"></td>'
-      + '<td><input class="fb-input" id="addr-addr-' + type + '-' + index + '" type="text" value="' + data.addr + '" placeholder="dirección"></td>'
-      + (isRent ? '<td><input class="fb-input" id="addr-contract-' + type + '-' + index + '" type="number" step="0.01" value="' + data.contract + '" style="width:80px;text-align:right"></td>' : '')
-      + '<td><input class="fb-input" id="addr-val-' + type + '-' + index + '" type="number" step="0.01" value="' + data.val + '" style="width:90px;text-align:right"></td>'
-      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveAddress(\'' + type + '\',' + index + ')">guardar</button> '
+      + '<td><input class="fb-input" id="addr-date-' + op.id + '" type="text" value="' + dateVal + '" placeholder="DD-MM-AAAA" style="min-width:110px"></td>'
+      + '<td><input class="fb-input" id="addr-addr-' + op.id + '" type="text" value="' + (addrData.addr || '') + '" placeholder="dirección"></td>'
+      + '<td>' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</td>'
+      + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
+      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveAddress(' + op.id + ')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelAddrEdit()">cancelar</button></td>'
       + '</tr>';
-  }
-
-  // ===== LISTAS =====
-  function renderListas() {
-    const comTable = document.getElementById('comisiones-table');
-    if (comTable) {
-      let tbody = state.comisiones.map((c, i) =>
-        '<tr>'
-        + '<td class="num">' + FB.fmt(c.sin) + '</td>'
-        + '<td class="num">' + FB.fmt(c.con) + '</td>'
-        + '<td class="num" style="width:70px"><span class="fb-row-actions">'
-        + '<button class="fb-btn fb-btn-sm" onclick="App.editComision(' + i + ')">editar</button>'
-        + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delComision(' + i + ')">×</button>'
-        + '</span></td></tr>'
-      ).join('');
-      if (state.editingOp && state.editingOp._type === 'comision' && state.editingOp.index === -1) {
-        tbody += '<tr class="fb-edit-row">'
-              + '<td><input class="fb-input" id="com-sin--1" type="number" step="0.01" value="0" style="text-align:right"></td>'
-              + '<td><input class="fb-input" id="com-con--1" type="number" step="0.01" value="0" style="text-align:right"></td>'
-              + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveComision(-1)">guardar</button> '
-              + '<button class="fb-btn fb-btn-sm" onclick="App.cancelEdit()">cancelar</button></td>'
-              + '</tr>';
-      }
-      comTable.innerHTML = '<thead><tr><th class="num">sin iva</th><th class="num">con iva</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
-    }
-
-    const coefTable = document.getElementById('coef-table');
-    if (coefTable) {
-      const tbody = state.coefs.map((c, i) =>
-        '<tr>'
-        + '<td>' + c.type.toLowerCase() + '</td>'
-        + '<td class="num">' + c.coef + '</td>'
-        + '<td style="text-transform:capitalize">' + c.month + '</td>'
-        + '<td class="num" style="width:70px"><span class="fb-row-actions">'
-        + '<button class="fb-btn fb-btn-sm" onclick="App.editCoef(' + i + ')">editar</button>'
-        + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delCoef(' + i + ')">×</button>'
-        + '</span></td></tr>'
-      ).join('');
-      coefTable.innerHTML = '<thead><tr><th>tipo</th><th class="num">coef</th><th>mes</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
-    }
   }
 
   // ===== CONFIG =====
@@ -462,7 +440,7 @@
     FBCharts.renderBarChart('chart-escritura', escValues, meses.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
   }
 
-  // ===== ACCIONES: OPERACIONES =====
+  // ===== ACCIONES =====
   const App = {};
 
   App.newOp = function () {
@@ -506,6 +484,7 @@
   App.delOp = function (id) {
     if (confirm('¿eliminar esta operación?')) {
       state.ops = state.ops.filter(o => o.id !== id);
+      delete state.opAddresses[id];
       saveState();
       renderAll();
       showToast('operación eliminada');
@@ -546,110 +525,35 @@
 
   App.cancelEdit = function () {
     state.editingOp = null;
-    state.editingAddress = null;
     renderOperaciones();
+  };
+
+  // ===== DIRECCIONES (vinculadas a operaciones) =====
+  App.editAddress = function (opId) {
+    state.editingAddressOpId = opId;
     renderResumen();
-    renderListas();
   };
 
-  // ===== ACCIONES: DIRECCIONES =====
-  App.newSold = function () { state.editingAddress = { type: 'sold', index: -1 }; renderResumen(); };
-  App.newRent = function () { state.editingAddress = { type: 'rent', index: -1 }; renderResumen(); };
-  App.editSold = function (index) { state.editingAddress = { type: 'sold', index: index }; renderResumen(); };
-  App.editRent = function (index) { state.editingAddress = { type: 'rent', index: index }; renderResumen(); };
-
-  App.delSold = function (index) {
-    if (confirm('¿eliminar esta dirección?')) {
-      state.sold.splice(index, 1);
-      saveState();
-      renderAll();
-      showToast('dirección eliminada');
-    }
+  App.cancelAddrEdit = function () {
+    state.editingAddressOpId = null;
+    renderResumen();
   };
 
-  App.delRent = function (index) {
-    if (confirm('¿eliminar esta dirección?')) {
-      state.rent.splice(index, 1);
-      saveState();
-      renderAll();
-      showToast('dirección eliminada');
-    }
-  };
-
-  App.saveAddress = function (type, index) {
-    const dateEl = document.getElementById('addr-date-' + type + '-' + index);
-    const addrEl = document.getElementById('addr-addr-' + type + '-' + index);
-    const valEl = document.getElementById('addr-val-' + type + '-' + index);
-
-    if (!dateEl || !addrEl || !valEl) { showToast('error: campos no encontrados'); return; }
+  App.saveAddress = function (opId) {
+    const dateEl = document.getElementById('addr-date-' + opId);
+    const addrEl = document.getElementById('addr-addr-' + opId);
+    if (!dateEl || !addrEl) { showToast('error: campos no encontrados'); return; }
 
     const dateISO = FB.parseDateEU(dateEl.value);
-    const item = {
+    state.opAddresses[opId] = {
       date: dateISO || dateEl.value,
-      addr: addrEl.value,
-      val: parseFloat(valEl.value) || 0
+      addr: addrEl.value
     };
-    if (type === 'rent') {
-      const contractEl = document.getElementById('addr-contract-' + type + '-' + index);
-      item.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
-    }
 
-    const arr = type === 'sold' ? state.sold : state.rent;
-    if (index === -1) arr.push(item);
-    else arr[index] = item;
-
-    state.editingAddress = null;
+    state.editingAddressOpId = null;
     saveState();
     renderAll();
     showToast('dirección guardada');
-  };
-
-  App.cancelAddrEdit = function () { state.editingAddress = null; renderResumen(); };
-
-  // ===== ACCIONES: LISTAS =====
-  App.newComision = function () { state.editingOp = { _type: 'comision', index: -1 }; renderListas(); };
-  App.editComision = function (index) { state.editingOp = { _type: 'comision', index: index }; renderListas(); };
-
-  App.delComision = function (index) {
-    if (confirm('¿eliminar esta fila?')) {
-      state.comisiones.splice(index, 1);
-      saveState();
-      renderListas();
-      showToast('comisión eliminada');
-    }
-  };
-
-  App.saveComision = function (index) {
-    const sinEl = document.getElementById('com-sin-' + index);
-    const conEl = document.getElementById('com-con-' + index);
-    if (!sinEl || !conEl) { showToast('error'); return; }
-    const item = { sin: parseFloat(sinEl.value) || 0, con: parseFloat(conEl.value) || 0 };
-    if (index === -1) state.comisiones.push(item);
-    else state.comisiones[index] = item;
-    state.editingOp = null;
-    saveState();
-    renderListas();
-    showToast('comisión guardada');
-  };
-
-  App.editCoef = function (index) {
-    const c = state.coefs[index];
-    const newCoef = prompt('nuevo coeficiente para ' + c.type.toLowerCase() + ':', c.coef);
-    if (newCoef !== null && !isNaN(parseFloat(newCoef))) {
-      c.coef = parseFloat(newCoef);
-      saveState();
-      renderListas();
-      showToast('coeficiente actualizado');
-    }
-  };
-
-  App.delCoef = function (index) {
-    if (confirm('¿eliminar este coeficiente?')) {
-      state.coefs.splice(index, 1);
-      saveState();
-      renderListas();
-      showToast('coeficiente eliminado');
-    }
   };
 
   // ===== CONFIG =====
@@ -672,7 +576,6 @@
     const trimData = FB.getTrimestreData(esc, state.goals.trimestre, state.goals.pisoValor);
     const pys = FB.getPysByMonth(state.ops);
     const NL = '\r\n';
-
     const num = (v) => FB.fmt(v).replace(' €', '').replace(/\./g, '').replace(',', '.');
 
     const lines = [];
@@ -768,7 +671,6 @@
     showToast._t = setTimeout(() => toast.classList.remove('show'), 2500);
   }
 
-  // Exponer App globalmente
   window.App = App;
 
   // ===== INIT =====

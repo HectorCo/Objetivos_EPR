@@ -102,15 +102,29 @@
     if (overlay) overlay.addEventListener('click', (e) => {
       if (e.target.id === 'modal-overlay') closeModal();
     });
+
+    // Re-renderizar gráficos al cambiar tamaño de ventana
+    let _resizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (state.activeTab !== 'graficos' && state.activeTab !== 'dashboard') return;
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(() => {
+        if (state.activeTab === 'graficos') renderGraficos();
+        if (state.activeTab === 'dashboard') renderDashboard();
+      }, 150);
+    });
   }
 
   function switchTab(tabName) {
     state.activeTab = tabName;
     document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
     document.querySelectorAll('.fb-section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + tabName));
-    if (tabName === 'dashboard') setTimeout(renderDashboard, 0);
-    if (tabName === 'graficos') setTimeout(renderGraficos, 0);
-    if (tabName === 'resumen') setTimeout(renderResumen, 0);
+    // Doble rAF para asegurar que la sección tiene ancho real antes de dibujar
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (tabName === 'dashboard') renderDashboard();
+      if (tabName === 'graficos') renderGraficos();
+      if (tabName === 'resumen') renderResumen();
+    }));
   }
 
   function setupServiceWorker() {

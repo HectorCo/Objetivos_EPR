@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v6 - contratos integrados)
+// Fincas Blanco - Aplicación principal (v6 - ingresos unificados)
 (function () {
   'use strict';
 
@@ -6,7 +6,7 @@
   const state = {
     year: 2026,
     ops: [],
-    contracts: [],          // Contratos de alquiler con opId, addr, date, contract, val
+    contracts: [],
     goals: {},
     editingOp: null,
     editingAddressOpId: null,
@@ -133,11 +133,6 @@
     if (el) el.textContent = state.year;
   }
 
-  // ===== HELPER: contratos vinculados a operaciones =====
-  function getContractsForOp(opId) {
-    return state.contracts.filter(c => c.opId === opId);
-  }
-
   // ===== DASHBOARD =====
   function renderDashboard() {
     const t = FB.getTotals(state.ops, state.contracts);
@@ -151,7 +146,6 @@
       const pctLocales = state.goals.locales ? Math.min(100, t.locales / state.goals.locales * 100) : 0;
       const pctAlq = state.goals.alquileres ? Math.min(100, t.alquileres / state.goals.alquileres * 100) : 0;
       const pctIng = state.goals.ingresos ? Math.min(100, t.total / state.goals.ingresos * 100) : 0;
-      const numContratos = state.contracts.filter(c => Number(c.contract) > 0).length;
 
       kpiContainer.innerHTML =
         '<div class="fb-card">'
@@ -168,11 +162,6 @@
         + '<div class="fb-metric-label">alquileres</div>'
         + '<div class="fb-metric-value">' + FB.fmt0(t.alquileres) + '<span class="fb-metric-suffix">/ ' + FB.fmt0(state.goals.alquileres) + '</span></div>'
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctAlq + '%;background:var(--kimi-chart-3)"></div></div>'
-        + '</div>'
-        + '<div class="fb-card">'
-        + '<div class="fb-metric-label">contratos redactados</div>'
-        + '<div class="fb-metric-value">' + FB.fmt(t.totalContratos) + '</div>'
-        + '<div class="fb-small fb-mt-sm">' + numContratos + ' contrato' + (numContratos === 1 ? '' : 's') + '</div>'
         + '</div>'
         + '<div class="fb-card">'
         + '<div class="fb-metric-label">ingresos totales</div>'
@@ -315,11 +304,9 @@
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctL + '%;background:var(--kimi-chart-2)"></div></div>'
         + '<div class="fb-flex fb-flex-between"><span class="fb-small">alquileres</span><span>' + FB.fmt0(t.alquileres) + ' / ' + FB.fmt0(state.goals.alquileres) + '</span></div>'
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctA + '%;background:var(--kimi-chart-3)"></div></div>'
-        + '<div class="fb-flex fb-flex-between"><span class="fb-small">contratos redactados</span><span>' + FB.fmt(t.totalContratos) + '</span></div>'
         + '</div></div>';
     }
 
-    // Tabla de inmuebles vendidos (derivada de operaciones VENTA + contratos con opId)
     const soldTable = document.getElementById('dir-vendidas');
     if (soldTable) {
       const ventas = state.ops.filter(o => o.type === 'VENTA PISO' || o.type === 'VENTA LOCAL' || o.type === 'VENTA PARKING');
@@ -340,7 +327,6 @@
       soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
     }
 
-    // Tabla de inmuebles alquilados (derivada de operaciones ALQUILER + contratos con opId)
     const rentTable = document.getElementById('dir-alquiladas');
     if (rentTable) {
       const alquileres = state.ops.filter(o => o.type === 'ALQUILER');
@@ -501,7 +487,6 @@
   App.delOp = function (id) {
     if (confirm('¿eliminar esta operación?')) {
       state.ops = state.ops.filter(o => o.id !== id);
-      // Eliminar contratos vinculados
       state.contracts = state.contracts.filter(c => c.opId !== id);
       saveState();
       renderAll();
@@ -636,7 +621,6 @@
     lines.push('Pisos vendidos,' + t.pisos + ',' + state.goals.pisos);
     lines.push('Locales vendidos,' + t.locales + ',' + state.goals.locales);
     lines.push('Alquileres,' + t.alquileres + ',' + state.goals.alquileres);
-    lines.push('Contratos redactados,' + num(t.totalContratos) + ',0');
     lines.push('Ingresos totales,' + num(t.total) + ',' + num(state.goals.ingresos));
     lines.push('');
     lines.push('OPERACIONES');

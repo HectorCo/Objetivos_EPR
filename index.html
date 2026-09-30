@@ -36,7 +36,6 @@
       <button class="fb-tab" data-tab="operaciones">operaciones</button>
       <button class="fb-tab" data-tab="resumen">resumen</button>
       <button class="fb-tab" data-tab="graficos">gráficos</button>
-      <button class="fb-tab" data-tab="listas">listas</button>
       <button class="fb-tab" data-tab="config">config</button>
     </div>
 
@@ -77,8 +76,7 @@
       <div class="fb-grid fb-grid-2" id="resumen-kpis"></div>
       <div class="fb-card fb-mt-md">
         <div class="fb-flex fb-flex-between" style="margin-bottom:12px">
-          <div class="fb-card-title">direcciones inmuebles vendidos</div>
-          <button class="fb-btn fb-btn-sm" onclick="App.newSold()">+ añadir</button>
+          <div class="fb-card-title">inmuebles vendidos</div>
         </div>
         <div class="fb-table-wrap">
           <table class="fb-table" id="dir-vendidas"></table>
@@ -86,8 +84,7 @@
       </div>
       <div class="fb-card fb-mt-md">
         <div class="fb-flex fb-flex-between" style="margin-bottom:12px">
-          <div class="fb-card-title">direcciones inmuebles alquilados</div>
-          <button class="fb-btn fb-btn-sm" onclick="App.newRent()">+ añadir</button>
+          <div class="fb-card-title">inmuebles alquilados</div>
         </div>
         <div class="fb-table-wrap">
           <table class="fb-table" id="dir-alquiladas"></table>
@@ -110,27 +107,6 @@
       <div class="fb-card fb-mt-md">
         <div class="fb-card-title">ingresos por escritura (mensual)</div>
         <div id="chart-escritura" class="fb-chart-container"></div>
-      </div>
-    </div>
-
-    <!-- LISTAS -->
-    <div class="fb-section" id="tab-listas">
-      <div class="fb-grid fb-grid-2">
-        <div class="fb-card">
-          <div class="fb-flex fb-flex-between" style="margin-bottom:12px">
-            <div class="fb-card-title">tabla de comisiones (sin iva ↔ con iva)</div>
-            <button class="fb-btn fb-btn-sm" onclick="App.newComision()">+ añadir</button>
-          </div>
-          <div class="fb-table-wrap">
-            <table class="fb-table" id="comisiones-table"></table>
-          </div>
-        </div>
-        <div class="fb-card">
-          <div class="fb-card-title">coeficientes por tipo de operación</div>
-          <div class="fb-table-wrap">
-            <table class="fb-table" id="coef-table"></table>
-          </div>
-        </div>
       </div>
     </div>
 

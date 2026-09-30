@@ -66,9 +66,13 @@
     <div class="fb-section" id="tab-operaciones">
       <div class="fb-flex fb-flex-between fb-mb-md">
         <div class="fb-small">gestiona las operaciones por mes de captación</div>
-        <button class="fb-btn fb-btn-primary" onclick="App.newOp()">+ nueva operación</button>
       </div>
       <div id="ops-container"></div>
+      <!-- Botón flotante (sticky) para añadir operación -->
+      <button class="fb-fab" id="btn-new-op" title="nueva operación" onclick="App.newOp()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>nueva operación</span>
+      </button>
     </div>
 
     <!-- RESUMEN -->
@@ -105,7 +109,7 @@
         </div>
       </div>
       <div class="fb-card fb-mt-md">
-        <div class="fb-card-title">ingresos por escritura (mensual)</div>
+        <div class="fb-card-title">ingresos por escritura (mensual, sin iva)</div>
         <div id="chart-escritura" class="fb-chart-container"></div>
       </div>
     </div>

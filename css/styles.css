@@ -146,14 +146,33 @@ button, input, select, textarea { font: inherit; }
   font-size: 28px;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
 }
 
-.fb-metric-suffix {
-  font-size: 15px;
+/* El sufijo (ej: "/ 258.000,00 €") no debe romper línea */
+.fb-metric-value .fb-metric-suffix {
+  display: inline;
+  white-space: nowrap;
+}
+
+/* Cuando el KPI tenga valor + sufijo, reducimos ligeramente el tamaño para
+   que quepan en la misma línea en pantallas medianas */
+.fb-card .fb-metric-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.fb-card .fb-metric-value > .fb-metric-suffix {
+  font-size: 14px;
   font-weight: 400;
   color: var(--kimi-color-text-secondary);
-  margin-left: 4px;
+  margin-left: 0;
+  flex-shrink: 0;
 }
 
 /* ===== PROGRESS ===== */
@@ -279,6 +298,49 @@ button, input, select, textarea { font: inherit; }
   border-radius: var(--fb-radius-lg);
 }
 
+/* ===== FAB (botón flotante) ===== */
+.fb-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 900;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border-radius: var(--fb-radius-full);
+  background: var(--kimi-color-text-primary, #111);
+  color: var(--kimi-color-bg-primary, #fff);
+  border: 1px solid var(--kimi-color-text-primary, #111);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18);
+  transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+}
+
+.fb-fab:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0,0,0,.22);
+}
+
+.fb-fab:active {
+  transform: translateY(0);
+}
+
+/* Solo mostrar el FAB cuando la pestaña operaciones está activa */
+.fb-section:not(.active) .fb-fab { display: none; }
+
+/* En móvil, FAB más compacto (solo icono + texto corto) */
+@media (max-width: 640px) {
+  .fb-fab {
+    right: 16px;
+    bottom: 16px;
+    padding: 12px;
+  }
+  .fb-fab span { display: none; }
+}
+
 /* ===== FORMS ===== */
 .fb-input, .fb-select, .fb-textarea {
   padding: 6px 10px;
@@ -345,7 +407,7 @@ button, input, select, textarea { font: inherit; }
 }
 
 .fb-bar-group {
-  flex: 1;
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;

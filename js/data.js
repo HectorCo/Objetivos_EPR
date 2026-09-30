@@ -24,23 +24,6 @@
       pisoValor: 10550
     },
 
-    DEFAULT_COMISIONES: [
-      {sin:16528.93,con:20000},{sin:15702.48,con:19000},{sin:14876.03,con:18000},
-      {sin:14049.59,con:17000},{sin:13223.14,con:16000},{sin:12396.69,con:15000},
-      {sin:11570.25,con:14000},{sin:10743.80,con:13000},{sin:9917.36,con:12000},
-      {sin:9090.91,con:11000},{sin:8264.46,con:10000},{sin:7438.02,con:9000},
-      {sin:6611.57,con:8000},{sin:5785.12,con:7000},{sin:4958.68,con:6000},
-      {sin:4132.23,con:5000},{sin:0,con:0}
-    ],
-
-    DEFAULT_COEFS: [
-      {type:'VENTA PISO',coef:1.0,month:'enero'},
-      {type:'VENTA PARKING',coef:0.8,month:'febrero'},
-      {type:'VENTA LOCAL',coef:0.6,month:'marzo'},
-      {type:'TASACIÓN',coef:0.4,month:'abril'},
-      {type:'ALQUILER',coef:0.2,month:'mayo'}
-    ],
-
     DEFAULT_OPS: [
       {id:1,month:0,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'febrero',pct:0.8},
       {id:2,month:0,type:'VENTA PISO',qty:1,honorarios:19500,escritura:'enero',pct:0.4},
@@ -134,13 +117,21 @@
       const parts = euDate.split('-');
       if (parts.length !== 3) return euDate;
       const [d, m, y] = parts;
-      if (d.length === 4) return euDate; // ya era ISO
+      if (d.length === 4) return euDate;
       return `${y}-${m}-${d}`;
     },
 
     // ---------- Cálculos ----------
     calcSinIva(op) {
-      return (Number(op.qty) || 0) * ((Number(op.honorarios) || 0) * (Number(op.pct) || 0)) / 1.21;
+      const qty = Number(op.qty) || 0;
+      const hon = Number(op.honorarios) || 0;
+      const pct = Number(op.pct) || 0;
+      const base = qty * hon * pct;
+      if (op.type === 'ALQUILER') {
+        // Los alquileres de vivienda están exentos de IVA: no se divide entre 1.21
+        return base;
+      }
+      return base / 1.21;
     },
     getPysByMonth(ops) {
       const arr = new Array(14).fill(0);
@@ -162,6 +153,7 @@
       let pisos = 0, locales = 0, alquileres = 0, total = 0;
       ops.forEach(op => {
         const v = this.calcSinIva(op);
+        if (isNaN(v)) return;
         total += v;
         if (op.type === 'VENTA PISO') pisos += Number(op.qty) || 0;
         if (op.type === 'VENTA LOCAL') locales += Number(op.qty) || 0;

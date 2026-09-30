@@ -58,38 +58,38 @@
     ],
 
     DEFAULT_SOLD: [
-      {date:'2025-11-01',addr:'C/ 8 de març, 64, 2º 1ª',val:6446.28},
-      {date:'2026-02-01',addr:'Av/ Torrente Gornal, 72',val:2975.21},
-      {date:'2026-03-01',addr:'C/ Llunàs, 2, 1º 1ª',val:9917.36},
-      {date:'2026-05-01',addr:'C/ Badalona, 14 (CASA)',val:0},
-      {date:'2025-11-01',addr:'Plaza Blocs Florida, 12 3º 4ª',val:6611.57},
-      {date:'2026-06-01',addr:'C/ Rubidi, 8, 2º 2ª',val:8264.46},
-      {date:'2026-04-01',addr:'C/ Alegria, 4 (LOCAL)',val:3305.79},
-      {date:'2025-11-01',addr:'C/ Casanova, 23 3º 1ª',val:9917.36},
-      {date:'2025-12-01',addr:'C/ Teide, 10 4º 3ª',val:6611.57},
-      {date:'2025-11-01',addr:'Rambla Marina, 528 13º 1ª',val:7933.88},
-      {date:'2026-01-01',addr:'Av/ Vilanova, 12 (LOCAL)',val:6611.57},
-      {date:'2026-01-01',addr:'C/ Vinaroz, 3 3º 1ª',val:3305.79},
-      {date:'2026-01-26',addr:'C/ Gerona, 27 (LOCAL)',val:32231.40},
-      {date:'2026-02-01',addr:'C/ CENTRE 4, plta 1, prta 2',val:4958.68},
-      {date:'2026-02-01',addr:'Av/ Fabregada, 93 (LOCAL)',val:40000},
-      {date:'2026-04-01',addr:'HIERBABUENA, DE LA, 10, prta: 1',val:6611.57},
-      {date:'2026-06-01',addr:'Ctra de Esplugues, 14, 9º 3ª',val:8264.46},
-      {date:'2026-04-01',addr:'C/ Josep Torras i Bages, 31 (LOCAL)',val:24793.39},
-      {date:'2026-06-01',addr:'Rambla Just Oliveras, 27 Entlo 2ª',val:8264.46},
-      {date:'2026-06-01',addr:'C/ Rosa de Alejandría, 85, SB 1º',val:1652.89},
-      {date:'2026-07-01',addr:'C/ Estronci, 47, LOCAL',val:4545.45}
+      {date:'2025-11-01',addr:'C/ 8 de març, 64, 2º 1ª',val:6446.28,opId:1},
+      {date:'2026-02-01',addr:'Av/ Torrente Gornal, 72',val:2975.21,opId:2},
+      {date:'2026-03-01',addr:'C/ Llunàs, 2, 1º 1ª',val:9917.36,opId:4},
+      {date:'2026-05-01',addr:'C/ Badalona, 14 (CASA)',val:0,opId:null},
+      {date:'2025-11-01',addr:'Plaza Blocs Florida, 12 3º 4ª',val:6611.57,opId:5},
+      {date:'2026-06-01',addr:'C/ Rubidi, 8, 2º 2ª',val:8264.46,opId:6},
+      {date:'2026-04-01',addr:'C/ Alegria, 4 (LOCAL)',val:3305.79,opId:7},
+      {date:'2025-11-01',addr:'C/ Casanova, 23 3º 1ª',val:9917.36,opId:8},
+      {date:'2025-12-01',addr:'C/ Teide, 10 4º 3ª',val:6611.57,opId:9},
+      {date:'2025-11-01',addr:'Rambla Marina, 528 13º 1ª',val:7933.88,opId:12},
+      {date:'2026-01-01',addr:'Av/ Vilanova, 12 (LOCAL)',val:6611.57,opId:13},
+      {date:'2026-01-01',addr:'C/ Vinaroz, 3 3º 1ª',val:3305.79,opId:14},
+      {date:'2026-01-26',addr:'C/ Gerona, 27 (LOCAL)',val:32231.40,opId:15},
+      {date:'2026-02-01',addr:'C/ CENTRE 4, plta 1, prta 2',val:4958.68,opId:18},
+      {date:'2026-02-01',addr:'Av/ Fabregada, 93 (LOCAL)',val:40000,opId:20},
+      {date:'2026-04-01',addr:'HIERBABUENA, DE LA, 10, prta: 1',val:6611.57,opId:25},
+      {date:'2026-06-01',addr:'Ctra de Esplugues, 14, 9º 3ª',val:8264.46,opId:26},
+      {date:'2026-04-01',addr:'C/ Josep Torras i Bages, 31 (LOCAL)',val:24793.39,opId:28},
+      {date:'2026-06-01',addr:'Rambla Just Oliveras, 27 Entlo 2ª',val:8264.46,opId:29},
+      {date:'2026-06-01',addr:'C/ Rosa de Alejandría, 85, SB 1º',val:1652.89,opId:null},
+      {date:'2026-07-01',addr:'C/ Estronci, 47, LOCAL',val:4545.45,opId:30}
     ],
 
     DEFAULT_RENT: [
-      {date:'2025-11-01',addr:'Av/ Isabel la católica, 14, 3º 8ª',contract:550,val:1424.38},
-      {date:'2026-02-01',addr:'C/ Santa Rosa, 12, 3º 2ª',contract:550,val:1333.47},
-      {date:'2026-03-01',addr:'Carretera de Hospitalet, 238 ESC B 1º 3ª',contract:550,val:1796.49},
-      {date:'2026-05-01',addr:'Av/ Fabregada, 70, 5º 2ª',contract:550,val:1364.69},
-      {date:'2025-11-01',addr:'Av/ Isabel la católica, 34, 5º 6ª',contract:550,val:550},
-      {date:'2026-06-01',addr:'C/ Santiago de Compostela, 2-4, At 2ª',contract:0,val:896},
-      {date:'2026-04-01',addr:'Rambla Marina 528, 1-4',contract:550,val:1773.61},
-      {date:'2026-04-01',addr:'Av/ Carrilet, 220, At 3ª',contract:0,val:1050}
+      {date:'2025-11-01',addr:'Av/ Isabel la católica, 14, 3º 8ª',contract:550,val:1424.38,opId:10},
+      {date:'2026-02-01',addr:'C/ Santa Rosa, 12, 3º 2ª',contract:550,val:1333.47,opId:11},
+      {date:'2026-03-01',addr:'Carretera de Hospitalet, 238 ESC B 1º 3ª',contract:550,val:1796.49,opId:17},
+      {date:'2026-05-01',addr:'Av/ Fabregada, 70, 5º 2ª',contract:550,val:1364.69,opId:19},
+      {date:'2025-11-01',addr:'Av/ Isabel la católica, 34, 5º 6ª',contract:550,val:550,opId:21},
+      {date:'2026-06-01',addr:'C/ Santiago de Compostela, 2-4, At 2ª',contract:0,val:896,opId:22},
+      {date:'2026-04-01',addr:'Rambla Marina 528, 1-4',contract:550,val:1773.61,opId:24},
+      {date:'2026-04-01',addr:'Av/ Carrilet, 220, At 3ª',contract:0,val:1050,opId:null}
     ],
 
     // ---------- Formato ----------
@@ -126,31 +126,43 @@
       const qty = Number(op.qty) || 0;
       const hon = Number(op.honorarios) || 0;
       const pct = Number(op.pct) || 0;
-      const base = qty * hon * pct;
-      if (op.type === 'ALQUILER') {
-        // Los alquileres de vivienda están exentos de IVA: no se divide entre 1.21
-        return base;
-      }
-      return base / 1.21;
+      return qty * hon * pct / 1.21;
     },
-    getPysByMonth(ops) {
+    getPysByMonth(ops, contracts) {
       const arr = new Array(14).fill(0);
       ops.forEach(op => {
         if (op.month >= 0 && op.month < 14) arr[op.month] += this.calcSinIva(op);
       });
+      if (Array.isArray(contracts)) {
+        contracts.forEach(c => {
+          const op = ops.find(o => o.id === c.opId);
+          if (op && op.month >= 0 && op.month < 14) {
+            arr[op.month] += Number(c.contract) || 0;
+          }
+        });
+      }
       return arr;
     },
-    getEscrituraByMonth(ops) {
+    getEscrituraByMonth(ops, contracts) {
       const map = {};
       this.MONTHS_ESCRITURA.forEach(m => map[m] = 0);
       ops.forEach(op => {
         const m = String(op.escritura || '').toLowerCase();
         if (map[m] !== undefined) map[m] += this.calcSinIva(op);
       });
+      if (Array.isArray(contracts)) {
+        contracts.forEach(c => {
+          const op = ops.find(o => o.id === c.opId);
+          if (op) {
+            const m = String(op.escritura || '').toLowerCase();
+            if (map[m] !== undefined) map[m] += Number(c.contract) || 0;
+          }
+        });
+      }
       return map;
     },
-    getTotals(ops) {
-      let pisos = 0, locales = 0, alquileres = 0, total = 0;
+    getTotals(ops, contracts) {
+      let pisos = 0, locales = 0, alquileres = 0, total = 0, totalContratos = 0;
       ops.forEach(op => {
         const v = this.calcSinIva(op);
         if (isNaN(v)) return;
@@ -159,7 +171,16 @@
         if (op.type === 'VENTA LOCAL') locales += Number(op.qty) || 0;
         if (op.type === 'ALQUILER') alquileres += Number(op.qty) || 0;
       });
-      return { pisos, locales, alquileres, total };
+      if (Array.isArray(contracts)) {
+        contracts.forEach(c => {
+          const v = Number(c.contract) || 0;
+          if (!isNaN(v)) {
+            totalContratos += v;
+            total += v;
+          }
+        });
+      }
+      return { pisos, locales, alquileres, total, totalContratos };
     },
     getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
       const meses = this.MONTHS_ESCRITURA;

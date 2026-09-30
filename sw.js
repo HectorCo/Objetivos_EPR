@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fincas-blanco-v2';
+const CACHE_NAME = 'fincas-blanco-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -12,7 +12,6 @@ const ASSETS = [
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // addAll falla si un recurso no existe; usamos add individual tolerante
       return Promise.all(
         ASSETS.map((url) =>
           cache.add(url).catch((err) => console.warn('[SW] no cacheado:', url, err))

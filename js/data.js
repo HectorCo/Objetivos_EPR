@@ -1,46 +1,47 @@
-// Fincas Blanco 2026 - Datos y utilidades
+// Fincas Blanco - Datos, constantes, cálculos y almacenamiento
+(function (global) {
+  'use strict';
 
-const FB = {
-  MONTHS: ['noviembre','diciembre','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
-  MONTHS_SHORT: ['nov','dic','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'],
-  MONTHS_ESCRITURA: ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
-  TYPES: ['VENTA PISO','VENTA LOCAL','ALQUILER','VENTA PARKING','TASACIÓN'],
-  TYPE_LABELS: {
-    'VENTA PISO': 'venta piso',
-    'VENTA LOCAL': 'venta local',
-    'ALQUILER': 'alquiler',
-    'VENTA PARKING': 'venta parking',
-    'TASACIÓN': 'tasación'
-  },
+  const FB = {
+    MONTHS: ['noviembre','diciembre','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
+    MONTHS_SHORT: ['nov','dic','ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'],
+    MONTHS_ESCRITURA: ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'],
+    TYPES: ['VENTA PISO','VENTA LOCAL','ALQUILER','VENTA PARKING','TASACIÓN'],
+    TYPE_LABELS: {
+      'VENTA PISO': 'venta piso',
+      'VENTA LOCAL': 'venta local',
+      'ALQUILER': 'alquiler',
+      'VENTA PARKING': 'venta parking',
+      'TASACIÓN': 'tasación'
+    },
 
-  DEFAULT_GOALS: {
-    pisos: 22,
-    locales: 2,
-    alquileres: 4,
-    ingresos: 258000,
-    trimestre: 64500,
-    pisoValor: 10550
-  },
+    DEFAULT_GOALS: {
+      pisos: 22,
+      locales: 2,
+      alquileres: 4,
+      ingresos: 258000,
+      trimestre: 64500,
+      pisoValor: 10550
+    },
 
-  DEFAULT_COMISIONES: [
-    {sin:16528.93,con:20000},{sin:15702.48,con:19000},{sin:14876.03,con:18000},
-    {sin:14049.59,con:17000},{sin:13223.14,con:16000},{sin:12396.69,con:15000},
-    {sin:11570.25,con:14000},{sin:10743.80,con:13000},{sin:9917.36,con:12000},
-    {sin:9090.91,con:11000},{sin:8264.46,con:10000},{sin:7438.02,con:9000},
-    {sin:6611.57,con:8000},{sin:5785.12,con:7000},{sin:4958.68,con:6000},
-    {sin:4132.23,con:5000},{sin:0,con:0}
-  ],
+    DEFAULT_COMISIONES: [
+      {sin:16528.93,con:20000},{sin:15702.48,con:19000},{sin:14876.03,con:18000},
+      {sin:14049.59,con:17000},{sin:13223.14,con:16000},{sin:12396.69,con:15000},
+      {sin:11570.25,con:14000},{sin:10743.80,con:13000},{sin:9917.36,con:12000},
+      {sin:9090.91,con:11000},{sin:8264.46,con:10000},{sin:7438.02,con:9000},
+      {sin:6611.57,con:8000},{sin:5785.12,con:7000},{sin:4958.68,con:6000},
+      {sin:4132.23,con:5000},{sin:0,con:0}
+    ],
 
-  DEFAULT_COEFS: [
-    {type:'VENTA PISO',coef:1.0,month:'enero'},
-    {type:'VENTA PARKING',coef:0.8,month:'febrero'},
-    {type:'VENTA LOCAL',coef:0.6,month:'marzo'},
-    {type:'TASACIÓN',coef:0.4,month:'abril'},
-    {type:'ALQUILER',coef:0.2,month:'mayo'},
-  ],
+    DEFAULT_COEFS: [
+      {type:'VENTA PISO',coef:1.0,month:'enero'},
+      {type:'VENTA PARKING',coef:0.8,month:'febrero'},
+      {type:'VENTA LOCAL',coef:0.6,month:'marzo'},
+      {type:'TASACIÓN',coef:0.4,month:'abril'},
+      {type:'ALQUILER',coef:0.2,month:'mayo'}
+    ],
 
-  getDefaultOps(year) {
-    const base = [
+    DEFAULT_OPS: [
       {id:1,month:0,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'febrero',pct:0.8},
       {id:2,month:0,type:'VENTA PISO',qty:1,honorarios:19500,escritura:'enero',pct:0.4},
       {id:3,month:0,type:'VENTA PISO',qty:0,honorarios:10000,escritura:'enero',pct:0.8},
@@ -70,13 +71,10 @@ const FB = {
       {id:27,month:7,type:'VENTA PISO',qty:0,honorarios:10000,escritura:'septiembre',pct:0.4},
       {id:28,month:7,type:'VENTA PISO',qty:1,honorarios:5000,escritura:'septiembre',pct:0.4},
       {id:29,month:7,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'octubre',pct:1.0},
-      {id:30,month:8,type:'VENTA LOCAL',qty:1,honorarios:5500,escritura:'julio',pct:1.0},
-    ];
-    return base;
-  },
+      {id:30,month:8,type:'VENTA LOCAL',qty:1,honorarios:5500,escritura:'julio',pct:1.0}
+    ],
 
-  getDefaultSold() {
-    return [
+    DEFAULT_SOLD: [
       {date:'2025-11-01',addr:'C/ 8 de març, 64, 2º 1ª',val:6446.28},
       {date:'2026-02-01',addr:'Av/ Torrente Gornal, 72',val:2975.21},
       {date:'2026-03-01',addr:'C/ Llunàs, 2, 1º 1ª',val:9917.36},
@@ -97,12 +95,10 @@ const FB = {
       {date:'2026-04-01',addr:'C/ Josep Torras i Bages, 31 (LOCAL)',val:24793.39},
       {date:'2026-06-01',addr:'Rambla Just Oliveras, 27 Entlo 2ª',val:8264.46},
       {date:'2026-06-01',addr:'C/ Rosa de Alejandría, 85, SB 1º',val:1652.89},
-      {date:'2026-07-01',addr:'C/ Estronci, 47, LOCAL',val:4545.45},
-    ];
-  },
+      {date:'2026-07-01',addr:'C/ Estronci, 47, LOCAL',val:4545.45}
+    ],
 
-  getDefaultRent() {
-    return [
+    DEFAULT_RENT: [
       {date:'2025-11-01',addr:'Av/ Isabel la católica, 14, 3º 8ª',contract:550,val:1424.38},
       {date:'2026-02-01',addr:'C/ Santa Rosa, 12, 3º 2ª',contract:550,val:1333.47},
       {date:'2026-03-01',addr:'Carretera de Hospitalet, 238 ESC B 1º 3ª',contract:550,val:1796.49},
@@ -110,124 +106,132 @@ const FB = {
       {date:'2025-11-01',addr:'Av/ Isabel la católica, 34, 5º 6ª',contract:550,val:550},
       {date:'2026-06-01',addr:'C/ Santiago de Compostela, 2-4, At 2ª',contract:0,val:896},
       {date:'2026-04-01',addr:'Rambla Marina 528, 1-4',contract:550,val:1773.61},
-      {date:'2026-04-01',addr:'Av/ Carrilet, 220, At 3ª',contract:0,val:1050},
-    ];
-  },
+      {date:'2026-04-01',addr:'Av/ Carrilet, 220, At 3ª',contract:0,val:1050}
+    ],
 
-  // Formatting
-  fmt(n) {
-    if (n === undefined || n === null || isNaN(n)) return '-';
-    return n.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
-  },
+    // ---------- Formato ----------
+    fmt(n) {
+      if (n === undefined || n === null || isNaN(n)) return '-';
+      return Number(n).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+    },
+    fmt0(n) {
+      if (n === undefined || n === null || isNaN(n)) return '-';
+      return Number(n).toLocaleString('es-ES', {maximumFractionDigits: 0});
+    },
+    fmtPct(n) {
+      if (n === undefined || n === null || isNaN(n)) return '-';
+      return (n * 100).toFixed(0) + '%';
+    },
+    fmtDateEU(isoDate) {
+      if (!isoDate) return '';
+      const parts = isoDate.split('-');
+      if (parts.length !== 3) return isoDate;
+      const [y, m, d] = parts;
+      return `${d}-${m}-${y}`;
+    },
+    parseDateEU(euDate) {
+      if (!euDate) return '';
+      const parts = euDate.split('-');
+      if (parts.length !== 3) return euDate;
+      const [d, m, y] = parts;
+      if (d.length === 4) return euDate; // ya era ISO
+      return `${y}-${m}-${d}`;
+    },
 
-  fmt0(n) {
-    if (n === undefined || n === null || isNaN(n)) return '-';
-    return n.toLocaleString('es-ES', {maximumFractionDigits: 0});
-  },
+    // ---------- Cálculos ----------
+    calcSinIva(op) {
+      return (Number(op.qty) || 0) * ((Number(op.honorarios) || 0) * (Number(op.pct) || 0)) / 1.21;
+    },
+    getPysByMonth(ops) {
+      const arr = new Array(14).fill(0);
+      ops.forEach(op => {
+        if (op.month >= 0 && op.month < 14) arr[op.month] += this.calcSinIva(op);
+      });
+      return arr;
+    },
+    getEscrituraByMonth(ops) {
+      const map = {};
+      this.MONTHS_ESCRITURA.forEach(m => map[m] = 0);
+      ops.forEach(op => {
+        const m = String(op.escritura || '').toLowerCase();
+        if (map[m] !== undefined) map[m] += this.calcSinIva(op);
+      });
+      return map;
+    },
+    getTotals(ops) {
+      let pisos = 0, locales = 0, alquileres = 0, total = 0;
+      ops.forEach(op => {
+        const v = this.calcSinIva(op);
+        total += v;
+        if (op.type === 'VENTA PISO') pisos += Number(op.qty) || 0;
+        if (op.type === 'VENTA LOCAL') locales += Number(op.qty) || 0;
+        if (op.type === 'ALQUILER') alquileres += Number(op.qty) || 0;
+      });
+      return { pisos, locales, alquileres, total };
+    },
+    getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
+      const meses = this.MONTHS_ESCRITURA;
+      const result = [];
+      for (let t = 0; t < 4; t++) {
+        const sum = meses.slice(t * 3, (t + 1) * 3).reduce((a, m) => a + (escrituraMap[m] || 0), 0);
+        const falta = sum - trimestreGoal;
+        const pisos = pisoValor > 0 ? Math.abs(falta / pisoValor) : 0;
+        result.push({ trimestre: t + 1, ingresos: sum, falta, pisos });
+      }
+      return result;
+    },
+    getMonthLabel(idx) {
+      return this.MONTHS[idx] + ' ' + (idx < 2 ? 2025 : 2026);
+    },
 
-  fmtPct(n) {
-    if (n === undefined || n === null || isNaN(n)) return '-';
-    return (n * 100).toFixed(0) + '%';
-  },
+    // ---------- Storage ----------
+    STORAGE_KEY: 'fincas_blanco_data_v3',
 
-  // Calculations
-  calcSinIva(op) {
-    return op.qty * (op.honorarios * op.pct) / 1.21;
-  },
-
-  getPysByMonth(ops) {
-    const arr = new Array(14).fill(0);
-    ops.forEach(op => { if (op.month >= 0 && op.month < 14) arr[op.month] += this.calcSinIva(op); });
-    return arr;
-  },
-
-  getEscrituraByMonth(ops) {
-    const map = {};
-    this.MONTHS_ESCRITURA.forEach(m => map[m] = 0);
-    ops.forEach(op => {
-      const m = op.escritura.toLowerCase();
-      if (map[m] !== undefined) map[m] += this.calcSinIva(op);
-    });
-    return map;
-  },
-
-  getTotals(ops) {
-    let pisos = 0, locales = 0, alquileres = 0, total = 0;
-    ops.forEach(op => {
-      const v = this.calcSinIva(op);
-      total += v;
-      if (op.type === 'VENTA PISO') pisos += op.qty;
-      if (op.type === 'VENTA LOCAL') locales += op.qty;
-      if (op.type === 'ALQUILER') alquileres += op.qty;
-    });
-    return { pisos, locales, alquileres, total };
-  },
-
-  getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
-    const meses = this.MONTHS_ESCRITURA;
-    const result = [];
-    for (let t = 0; t < 4; t++) {
-      const sum = meses.slice(t * 3, (t + 1) * 3).reduce((a, m) => a + (escrituraMap[m] || 0), 0);
-      const falta = sum - trimestreGoal;
-      const pisos = Math.abs(falta / pisoValor);
-      result.push({ trimestre: t + 1, ingresos: sum, falta, pisos });
-    }
-    return result;
-  },
-
-  // Storage
-  STORAGE_KEY: 'fincas_blanco_data',
-
-  load(year) {
-    try {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (!raw) return null;
-      const all = JSON.parse(raw);
-      return all[year] || null;
-    } catch (e) { return null; }
-  },
-
-  save(year, data) {
-    try {
-      let all = {};
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (raw) all = JSON.parse(raw);
-      all[year] = data;
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
-      return true;
-    } catch (e) { return false; }
-  },
-
-  exportJSON() {
-    const raw = localStorage.getItem(this.STORAGE_KEY);
-    if (!raw) return null;
-    const blob = new Blob([raw], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'fincas_blanco_backup_' + new Date().toISOString().slice(0, 10) + '.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    return true;
-  },
-
-  importJSON(file, callback) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    load(year) {
       try {
-        const data = JSON.parse(e.target.result);
-        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-        callback(null, data);
-      } catch (err) { callback(err); }
-    };
-    reader.readAsText(file);
-  },
+        const raw = localStorage.getItem(this.STORAGE_KEY);
+        if (!raw) return null;
+        const all = JSON.parse(raw);
+        return all[year] || null;
+      } catch (e) { return null; }
+    },
+    save(year, data) {
+      try {
+        let all = {};
+        const raw = localStorage.getItem(this.STORAGE_KEY);
+        if (raw) {
+          try { all = JSON.parse(raw); } catch (e) { all = {}; }
+        }
+        all[year] = data;
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
+        return true;
+      } catch (e) { return false; }
+    },
+    exportJSON() {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (!raw) { alert('No hay datos para exportar todavía'); return; }
+      const blob = new Blob([raw], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'fincas_blanco_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    importJSON(file, callback) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+          callback(null, data);
+        } catch (err) { callback(err); }
+      };
+      reader.readAsText(file);
+    }
+  };
 
-  getYearFromMonthIndex(idx) {
-    return idx < 2 ? 2025 : 2026;
-  },
-
-  getMonthLabel(idx) {
-    return FB.MONTHS[idx] + ' ' + this.getYearFromMonthIndex(idx);
-  }
-};
+  global.FB = FB;
+})(window);

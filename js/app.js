@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v5 - sin listas, resumen auto desde operaciones)
+// Fincas Blanco - Aplicación principal (v6 - contratos integrados)
 (function () {
   'use strict';
 
@@ -6,11 +6,10 @@
   const state = {
     year: 2026,
     ops: [],
-    // Mapa de direcciones asociadas a operaciones: { [opId]: { addr, date, contract, val } }
-    opAddresses: {},
+    contracts: [],          // Contratos de alquiler con opId, addr, date, contract, val
     goals: {},
     editingOp: null,
-    editingAddressOpId: null,   // id de la operación cuya dirección se está editando
+    editingAddressOpId: null,
     nextId: 1,
     activeTab: 'dashboard'
   };
@@ -20,14 +19,15 @@
     if (year === 2026) {
       return {
         ops: JSON.parse(JSON.stringify(FB.DEFAULT_OPS)),
-        opAddresses: {},
+        contracts: JSON.parse(JSON.stringify(FB.DEFAULT_RENT))
+                    .concat(JSON.parse(JSON.stringify(FB.DEFAULT_SOLD))),
         goals: Object.assign({}, FB.DEFAULT_GOALS),
         nextId: 31
       };
     }
     return {
       ops: [],
-      opAddresses: {},
+      contracts: [],
       goals: Object.assign({}, FB.DEFAULT_GOALS),
       nextId: 1
     };
@@ -38,13 +38,9 @@
     const data = FB.load(year);
     if (data) {
       state.ops = data.ops || [];
-      state.opAddresses = data.opAddresses || {};
+      state.contracts = data.contracts || [];
       state.goals = data.goals || Object.assign({}, FB.DEFAULT_GOALS);
       state.nextId = data.nextId || 1;
-      // Compatibilidad con versiones antiguas que guardaban sold/rent por separado
-      if (data.sold && !Object.keys(state.opAddresses).length) {
-        // migración suave: se ignoran, el usuario las reintroducirá vinculadas a operaciones
-      }
     } else {
       const def = buildDefaultData(year);
       Object.assign(state, def);
@@ -54,7 +50,7 @@
   function saveState() {
     FB.save(state.year, {
       ops: state.ops,
-      opAddresses: state.opAddresses,
+      contracts: state.contracts,
       goals: state.goals,
       nextId: state.nextId
     });
@@ -137,12 +133,17 @@
     if (el) el.textContent = state.year;
   }
 
+  // ===== HELPER: contratos vinculados a operaciones =====
+  function getContractsForOp(opId) {
+    return state.contracts.filter(c => c.opId === opId);
+  }
+
   // ===== DASHBOARD =====
   function renderDashboard() {
-    const t = FB.getTotals(state.ops);
-    const esc = FB.getEscrituraByMonth(state.ops);
+    const t = FB.getTotals(state.ops, state.contracts);
+    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
     const trimData = FB.getTrimestreData(esc, state.goals.trimestre, state.goals.pisoValor);
-    const pys = FB.getPysByMonth(state.ops);
+    const pys = FB.getPysByMonth(state.ops, state.contracts);
 
     const kpiContainer = document.getElementById('kpi-cards');
     if (kpiContainer) {
@@ -150,6 +151,7 @@
       const pctLocales = state.goals.locales ? Math.min(100, t.locales / state.goals.locales * 100) : 0;
       const pctAlq = state.goals.alquileres ? Math.min(100, t.alquileres / state.goals.alquileres * 100) : 0;
       const pctIng = state.goals.ingresos ? Math.min(100, t.total / state.goals.ingresos * 100) : 0;
+      const numContratos = state.contracts.filter(c => Number(c.contract) > 0).length;
 
       kpiContainer.innerHTML =
         '<div class="fb-card">'
@@ -166,6 +168,11 @@
         + '<div class="fb-metric-label">alquileres</div>'
         + '<div class="fb-metric-value">' + FB.fmt0(t.alquileres) + '<span class="fb-metric-suffix">/ ' + FB.fmt0(state.goals.alquileres) + '</span></div>'
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctAlq + '%;background:var(--kimi-chart-3)"></div></div>'
+        + '</div>'
+        + '<div class="fb-card">'
+        + '<div class="fb-metric-label">contratos redactados</div>'
+        + '<div class="fb-metric-value">' + FB.fmt(t.totalContratos) + '</div>'
+        + '<div class="fb-small fb-mt-sm">' + numContratos + ' contrato' + (numContratos === 1 ? '' : 's') + '</div>'
         + '</div>'
         + '<div class="fb-card">'
         + '<div class="fb-metric-label">ingresos totales</div>'
@@ -283,7 +290,7 @@
 
   // ===== RESUMEN =====
   function renderResumen() {
-    const t = FB.getTotals(state.ops);
+    const t = FB.getTotals(state.ops, state.contracts);
     const cumpl = state.goals.ingresos ? (t.total / state.goals.ingresos) : 0;
 
     const kpiContainer = document.getElementById('resumen-kpis');
@@ -308,10 +315,11 @@
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctL + '%;background:var(--kimi-chart-2)"></div></div>'
         + '<div class="fb-flex fb-flex-between"><span class="fb-small">alquileres</span><span>' + FB.fmt0(t.alquileres) + ' / ' + FB.fmt0(state.goals.alquileres) + '</span></div>'
         + '<div class="fb-progress"><div class="fb-progress-fill" style="width:' + pctA + '%;background:var(--kimi-chart-3)"></div></div>'
+        + '<div class="fb-flex fb-flex-between"><span class="fb-small">contratos redactados</span><span>' + FB.fmt(t.totalContratos) + '</span></div>'
         + '</div></div>';
     }
 
-    // Tabla de inmuebles vendidos (derivada de operaciones VENTA)
+    // Tabla de inmuebles vendidos (derivada de operaciones VENTA + contratos con opId)
     const soldTable = document.getElementById('dir-vendidas');
     if (soldTable) {
       const ventas = state.ops.filter(o => o.type === 'VENTA PISO' || o.type === 'VENTA LOCAL' || o.type === 'VENTA PARKING');
@@ -320,43 +328,43 @@
         tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de venta. añádelas en la pestaña "operaciones".</td></tr>';
       } else {
         ventas.forEach(op => {
-          const addrData = state.opAddresses[op.id] || {};
+          const linked = state.contracts.find(c => c.opId === op.id) || {};
           const isEditing = state.editingAddressOpId === op.id;
           if (isEditing) {
-            tbody += renderAddressEditRow(op, addrData);
+            tbody += renderAddressEditRow(op, linked);
           } else {
-            tbody += renderSoldRow(op, addrData);
+            tbody += renderSoldRow(op, linked);
           }
         });
       }
       soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
     }
 
-    // Tabla de inmuebles alquilados (derivada de operaciones ALQUILER)
+    // Tabla de inmuebles alquilados (derivada de operaciones ALQUILER + contratos con opId)
     const rentTable = document.getElementById('dir-alquiladas');
     if (rentTable) {
       const alquileres = state.ops.filter(o => o.type === 'ALQUILER');
       let tbody = '';
       if (alquileres.length === 0) {
-        tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler. añádelas en la pestaña "operaciones".</td></tr>';
+        tbody = '<tr><td colspan="6" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler. añádelas en la pestaña "operaciones".</td></tr>';
       } else {
         alquileres.forEach(op => {
-          const addrData = state.opAddresses[op.id] || {};
+          const linked = state.contracts.find(c => c.opId === op.id) || {};
           const isEditing = state.editingAddressOpId === op.id;
           if (isEditing) {
-            tbody += renderAddressEditRow(op, addrData);
+            tbody += renderAddressEditRow(op, linked);
           } else {
-            tbody += renderRentRow(op, addrData);
+            tbody += renderRentRow(op, linked);
           }
         });
       }
-      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
+      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">contrato</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
     }
   }
 
-  function renderSoldRow(op, addrData) {
-    const addr = addrData.addr || '<span class="fb-muted">— sin dirección —</span>';
-    const date = addrData.date ? FB.fmtDateEU(addrData.date) : '<span class="fb-muted">—</span>';
+  function renderSoldRow(op, linked) {
+    const addr = linked.addr || '<span class="fb-muted">— sin dirección —</span>';
+    const date = linked.date ? FB.fmtDateEU(linked.date) : '<span class="fb-muted">—</span>';
     const badgeClass = {
       'VENTA PISO': 'fb-badge-piso',
       'VENTA LOCAL': 'fb-badge-local',
@@ -372,27 +380,36 @@
       + '</span></td></tr>';
   }
 
-  function renderRentRow(op, addrData) {
-    const addr = addrData.addr || '<span class="fb-muted">— sin dirección —</span>';
-    const date = addrData.date ? FB.fmtDateEU(addrData.date) : '<span class="fb-muted">—</span>';
+  function renderRentRow(op, linked) {
+    const addr = linked.addr || '<span class="fb-muted">— sin dirección —</span>';
+    const date = linked.date ? FB.fmtDateEU(linked.date) : '<span class="fb-muted">—</span>';
+    const contract = linked.contract !== undefined ? linked.contract : 0;
+    const val = linked.val !== undefined ? linked.val : FB.calcSinIva(op);
     return '<tr>'
       + '<td>' + date + '</td>'
       + '<td>' + addr + '</td>'
       + '<td><span class="fb-badge fb-badge-alq">alquiler</span></td>'
-      + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
+      + '<td class="num">' + FB.fmt(contract) + '</td>'
+      + '<td class="num">' + FB.fmt(val) + '</td>'
       + '<td class="num" style="width:80px"><span class="fb-row-actions">'
       + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
       + '</span></td></tr>';
   }
 
-  function renderAddressEditRow(op, addrData) {
-    const dateVal = addrData.date ? FB.fmtDateEU(addrData.date) : '';
+  function renderAddressEditRow(op, linked) {
+    const dateVal = linked.date ? FB.fmtDateEU(linked.date) : '';
     const isRent = op.type === 'ALQUILER';
+    const contractVal = linked.contract !== undefined ? linked.contract : (isRent ? 550 : 0);
+    const valVal = linked.val !== undefined ? linked.val : FB.calcSinIva(op);
+
     return '<tr class="fb-edit-row">'
       + '<td><input class="fb-input" id="addr-date-' + op.id + '" type="text" value="' + dateVal + '" placeholder="DD-MM-AAAA" style="min-width:110px"></td>'
-      + '<td><input class="fb-input" id="addr-addr-' + op.id + '" type="text" value="' + (addrData.addr || '') + '" placeholder="dirección"></td>'
+      + '<td><input class="fb-input" id="addr-addr-' + op.id + '" type="text" value="' + (linked.addr || '') + '" placeholder="dirección"></td>'
       + '<td>' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</td>'
-      + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
+      + (isRent
+          ? '<td><input class="fb-input" id="addr-contract-' + op.id + '" type="number" step="0.01" value="' + contractVal + '" style="width:90px;text-align:right" placeholder="contrato"></td>'
+          : '')
+      + '<td><input class="fb-input" id="addr-val-' + op.id + '" type="number" step="0.01" value="' + valVal + '" style="width:90px;text-align:right"></td>'
       + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveAddress(' + op.id + ')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelAddrEdit()">cancelar</button></td>'
       + '</tr>';
@@ -418,7 +435,7 @@
 
   // ===== GRÁFICOS =====
   function renderGraficos() {
-    const esc = FB.getEscrituraByMonth(state.ops);
+    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
     const meses = FB.MONTHS_ESCRITURA;
 
     const actualCumul = [];
@@ -433,7 +450,7 @@
 
     FBCharts.renderLineChart('chart-line', actualCumul, targetCumul, meses.map(m => m.slice(0, 3)));
 
-    const t = FB.getTotals(state.ops);
+    const t = FB.getTotals(state.ops, state.contracts);
     FBCharts.renderDonut('chart-donut', [t.pisos, t.locales, t.alquileres], ['pisos', 'locales', 'alquileres']);
 
     const escValues = meses.map(m => esc[m] || 0);
@@ -484,7 +501,8 @@
   App.delOp = function (id) {
     if (confirm('¿eliminar esta operación?')) {
       state.ops = state.ops.filter(o => o.id !== id);
-      delete state.opAddresses[id];
+      // Eliminar contratos vinculados
+      state.contracts = state.contracts.filter(c => c.opId !== id);
       saveState();
       renderAll();
       showToast('operación eliminada');
@@ -542,13 +560,31 @@
   App.saveAddress = function (opId) {
     const dateEl = document.getElementById('addr-date-' + opId);
     const addrEl = document.getElementById('addr-addr-' + opId);
-    if (!dateEl || !addrEl) { showToast('error: campos no encontrados'); return; }
+    const valEl = document.getElementById('addr-val-' + opId);
+    if (!dateEl || !addrEl || !valEl) { showToast('error: campos no encontrados'); return; }
+
+    const op = state.ops.find(o => o.id === opId);
+    const isRent = op && op.type === 'ALQUILER';
 
     const dateISO = FB.parseDateEU(dateEl.value);
-    state.opAddresses[opId] = {
+    const entry = {
       date: dateISO || dateEl.value,
-      addr: addrEl.value
+      addr: addrEl.value,
+      val: parseFloat(valEl.value) || 0,
+      opId: opId
     };
+
+    if (isRent) {
+      const contractEl = document.getElementById('addr-contract-' + opId);
+      entry.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
+    }
+
+    const idx = state.contracts.findIndex(c => c.opId === opId);
+    if (idx >= 0) {
+      state.contracts[idx] = entry;
+    } else {
+      state.contracts.push(entry);
+    }
 
     state.editingAddressOpId = null;
     saveState();
@@ -571,10 +607,10 @@
 
   // ===== EXPORTAR CSV =====
   App.exportExcel = function () {
-    const t = FB.getTotals(state.ops);
-    const esc = FB.getEscrituraByMonth(state.ops);
+    const t = FB.getTotals(state.ops, state.contracts);
+    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
     const trimData = FB.getTrimestreData(esc, state.goals.trimestre, state.goals.pisoValor);
-    const pys = FB.getPysByMonth(state.ops);
+    const pys = FB.getPysByMonth(state.ops, state.contracts);
     const NL = '\r\n';
     const num = (v) => FB.fmt(v).replace(' €', '').replace(/\./g, '').replace(',', '.');
 
@@ -600,6 +636,7 @@
     lines.push('Pisos vendidos,' + t.pisos + ',' + state.goals.pisos);
     lines.push('Locales vendidos,' + t.locales + ',' + state.goals.locales);
     lines.push('Alquileres,' + t.alquileres + ',' + state.goals.alquileres);
+    lines.push('Contratos redactados,' + num(t.totalContratos) + ',0');
     lines.push('Ingresos totales,' + num(t.total) + ',' + num(state.goals.ingresos));
     lines.push('');
     lines.push('OPERACIONES');

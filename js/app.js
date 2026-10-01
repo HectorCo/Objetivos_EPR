@@ -1,13 +1,13 @@
-// Fincas Blanco - Aplicación principal (v11 - cross-year)
+// Fincas Blanco - Aplicación principal (v12 - cross-year FIXED)
 (function () {
   'use strict';
 
   // ===== ESTADO =====
   const state = {
     year: 2026,
-    ops: [],           // ops visibles para el año actual (captación year + escritura year)
-    contracts: [],     // contratos visibles (todos, se filtran en los cálculos)
-    allYears: {},      // copia completa de todos los años guardados (para búsquedas cross-year)
+    ops: [],
+    contracts: [],
+    allYears: {},
     goals: {},
     editingOp: null,
     editingAddressOpId: null,
@@ -18,18 +18,10 @@
   };
 
   // ===== HELPERS CROSS-YEAR =====
-  // Construye el array de ops "visibles" para el año actual:
-  // - ops cuyo captureYear === year (con su month original)
-  // - ops de otros años cuyo escrituraYear === year (marcadas con _fromYear)
-  // Cada op lleva un campo runtime:
-  //   _role: 'capture'  → solo captación en este año (no cuenta para escritura)
-  //          'escritura'→ solo escritura en este año (captación en otro año)
-  //          'both'     → ambos coinciden (caso normal)
-  //   _fromYear: año real donde está guardada
+  // Obtiene todas las ops visibles para un año, sin modificar state.allYears
   function collectOpsForYear(year) {
     const result = [];
     const all = state.allYears || {};
-
     Object.keys(all).forEach(yStr => {
       const y = parseInt(yStr, 10);
       const block = all[yStr] || {};
@@ -38,32 +30,33 @@
         const op = FB.normalizeOp(raw, y);
         const cy = op.captureYear;
         const ey = op.escrituraYear;
-
         if (cy === year && ey === year) {
-          // Caso normal: ambas en el mismo año
           result.push(Object.assign({}, op, { _role: 'both', _fromYear: y }));
         } else if (cy === year && ey !== year) {
-          // Captada este año, se escritura en otro
           result.push(Object.assign({}, op, { _role: 'capture', _fromYear: y }));
         } else if (cy !== year && ey === year) {
-          // Captada en otro año, se escritura este año
           result.push(Object.assign({}, op, { _role: 'escritura', _fromYear: y }));
         }
-        // Si ni cy ni ey coinciden con `year`, no se incluye
       });
     });
-
     return result;
   }
 
-  // Construye el array de contratos visibles (los que se vinculan a ops visibles)
+  // Obtiene todos los contratos de todos los años, indexados por opId
+  // Devuelve solo UNA copia de cada contrato (deduplicado por opId)
   function collectContractsForYear(year) {
+    const seen = {};
     const result = [];
     const all = state.allYears || {};
     Object.keys(all).forEach(yStr => {
       const block = all[yStr] || {};
       const contracts = block.contracts || [];
-      contracts.forEach(c => result.push(c));
+      contracts.forEach(c => {
+        const key = String(c.opId);
+        if (seen[key]) return;
+        seen[key] = true;
+        result.push(Object.assign({}, c));
+      });
     });
     return result;
   }
@@ -71,9 +64,8 @@
   function buildDefaultData(year) {
     if (year === 2026) {
       return {
-        ops: JSON.parse(JSON.stringify(FB.DEFAULT_OPS)),
-        contracts: JSON.parse(JSON.stringify(FB.DEFAULT_RENT))
-                    .concat(JSON.parse(JSON.stringify(FB.DEFAULT_SOLD))),
+        ops: JSON.parse(JSON.stringify(FB.DEFAULT_OPS)).map(o => FB.normalizeOp(o, 2026)),
+        contracts: JSON.parse(JSON.stringify(FB.DEFAULT_RENT)).concat(JSON.parse(JSON.stringify(FB.DEFAULT_SOLD))),
         goals: Object.assign({}, FB.DEFAULT_GOALS),
         nextId: 31
       };
@@ -86,77 +78,91 @@
     };
   }
 
-  // Carga el año actual desde state.allYears
   function loadYear(year) {
     state.year = year;
-
-    // Si el año no existe en allYears, lo creamos con defaults
     if (!state.allYears[year]) {
       state.allYears[year] = buildDefaultData(year);
     }
-
     const block = state.allYears[year];
-
-    // Todas las ops visibles para este año (captación + escritura cross-year)
     state.ops = collectOpsForYear(year);
     state.contracts = collectContractsForYear(year);
-
-    // Goals y nextId se toman del bloque del año actual
     state.goals = block.goals || Object.assign({}, FB.DEFAULT_GOALS);
     state.nextId = block.nextId || 1;
   }
 
-  // Guarda los cambios: reconstruye los bloques por año y sube solo los que han cambiado
+  // ============================================================
+  // ===== FIX CRÍTICO: saveState() ahora es QUIRÚRGICO ==========
+  // ============================================================
+  // Antes: limpiaba TODOS los arrays de TODOS los años y rellenaba
+  //        con lo que había en state.ops (que solo ve el año actual).
+  //        Resultado: pérdida de ops de otros años + duplicación de contratos.
+  //
+  // Ahora: solo se modifican los arrays de los años AFECTADOS por las
+  //        operaciones que hay en state.ops. Las ops/contratos de otros
+  //        años se dejan intactas.
+  // ============================================================
   function saveState() {
     if (!state.canWrite) {
       showToast('modo solo lectura: no puedes guardar cambios');
       return;
     }
 
-    // Reconstruimos los bloques de cada año a partir de state.ops
-    // 1) Limpiamos los arrays de ops/contracts de cada año
-    Object.keys(state.allYears).forEach(yStr => {
-      const y = parseInt(yStr, 10);
-      if (!state.allYears[yStr]) state.allYears[yStr] = { ops: [], contracts: [], goals: {}, nextId: 1 };
-      state.allYears[yStr].ops = [];
-      state.allYears[yStr].contracts = [];
-    });
+    const affectedYears = new Set();
 
-    // 2) Reasignamos cada op a su año de captación original
+    // 1) Aplicar cambios de state.ops a los arrays de sus años de origen
     state.ops.forEach(op => {
       const fromYear = op._fromYear != null ? op._fromYear : state.year;
+      affectedYears.add(fromYear);
+
       if (!state.allYears[fromYear]) {
         state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
       }
-      // Quitamos los campos de runtime antes de guardar
+
+      const block = state.allYears[fromYear];
       const clean = Object.assign({}, op);
       delete clean._role;
       delete clean._fromYear;
-      state.allYears[fromYear].ops.push(clean);
+
+      const idx = block.ops.findIndex(o => o.id === op.id);
+      if (idx >= 0) {
+        block.ops[idx] = clean;
+      } else {
+        block.ops.push(clean);
+      }
     });
 
-    // 3) Reasignamos cada contrato a su año de captación (a través de la op vinculada)
+    // 2) Aplicar cambios de state.contracts de forma quirúrgica
     state.contracts.forEach(c => {
       // Buscar la op vinculada para saber a qué año pertenece
       const op = state.ops.find(o => o.id === c.opId);
-      const fromYear = op && op._fromYear != null ? op._fromYear : state.year;
+      if (!op) return; // contrato huérfano, no lo guardamos
+
+      const fromYear = op._fromYear != null ? op._fromYear : state.year;
+      affectedYears.add(fromYear);
+
       if (!state.allYears[fromYear]) {
         state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
       }
-      state.allYears[fromYear].contracts.push(c);
+
+      const block = state.allYears[fromYear];
+      const idx = block.contracts.findIndex(x => x.opId === c.opId);
+      const clean = Object.assign({}, c);
+
+      if (idx >= 0) {
+        block.contracts[idx] = clean;
+      } else {
+        block.contracts.push(clean);
+      }
     });
 
-    // 4) Actualizamos goals y nextId SOLO del año actual
+    // 3) Actualizar goals y nextId del año actual
     state.allYears[state.year].goals = state.goals;
     state.allYears[state.year].nextId = state.nextId;
+    affectedYears.add(state.year);
 
-    // 5) Subimos a Firestore solo el año actual y los años afectados
-    const yearsToSave = new Set([state.year]);
-    state.ops.forEach(op => {
-      if (op._fromYear != null) yearsToSave.add(op._fromYear);
-    });
-
-    yearsToSave.forEach(y => {
+    // 4) Persistir SOLO los años afectados
+    affectedYears.forEach(y => {
+      if (!state.allYears[y]) return;
       FB.saveYear(y, state.allYears[y]);
     });
   }
@@ -198,7 +204,6 @@
         showApp();
         applyRoleUI();
 
-        // Carga local inicial
         state.allYears = FB.loadAllLocal();
         if (!Object.keys(state.allYears).length) {
           state.allYears[2026] = buildDefaultData(2026);
@@ -207,7 +212,6 @@
         loadYear(state.year);
         init();
 
-        // Carga de Firestore (todos los años)
         FB.loadAllFromCloud().then((all) => {
           if (all) {
             console.log('[Fincas Blanco] Datos cargados de Firestore');
@@ -217,7 +221,6 @@
           }
         });
 
-        // Suscripción a cambios
         FB.subscribeToCloud((all) => {
           state.allYears = all;
           loadYear(state.year);
@@ -425,8 +428,6 @@
     if (!container) return;
 
     let html = '';
-
-    // Cabeceras de año para las ops que no son del año actual
     for (let m = 0; m < 14; m++) {
       const ops = state.ops.filter(o => o.month === m);
       const isEditingNew = state.editingOp && state.editingOp.id === 0 && state.editingOp.month === m;
@@ -455,28 +456,21 @@
     container.innerHTML = html || '<div class="fb-muted fb-center" style="padding:60px 20px">no hay operaciones registradas.</div>';
   }
 
-  // Estilos para destacar ops cross-year
   function getEscrituraCell(op) {
     const ey = FB.getEscrituraYear(op, state.year);
     const cy = FB.getCaptureYear(op, state.year);
     const mes = String(op.escritura || '').toLowerCase();
 
     if (ey === cy) {
-      // Caso normal: solo mes, tal cual
       return '<td style="text-transform:capitalize">' + mes + '</td>'
            + '<td class="center fb-muted">—</td>';
     }
-
-    // Cross-year: mostrar mes + año (con estilos según dirección)
     if (ey > cy) {
-      // Captada en el año actual pero escriturada más tarde → rojo/negrita en el año
       return '<td style="text-transform:capitalize">' + mes + '</td>'
            + '<td class="center"><strong style="color:#dc2626">' + ey + '</strong></td>';
-    } else {
-      // Captada antes, escriturada en el año actual → gris/nota
-      return '<td style="text-transform:capitalize">' + mes + '</td>'
-           + '<td class="center"><span class="fb-muted" style="font-size:11px">(capt. ' + cy + ')</span></td>';
     }
+    return '<td style="text-transform:capitalize">' + mes + '</td>'
+         + '<td class="center"><span class="fb-muted" style="font-size:11px">(capt. ' + cy + ')</span></td>';
   }
 
   function renderOpRow(op) {
@@ -511,7 +505,6 @@
     const typeOpts = FB.TYPES.map(t => '<option value="' + t + '"' + (op.type === t ? ' selected' : '') + '>' + FB.TYPE_LABELS[t] + '</option>').join('');
     const escOpts = FB.MONTHS_ESCRITURA.map(m => '<option value="' + m + '"' + (op.escritura === m ? ' selected' : '') + '>' + m + '</option>').join('');
 
-    // Años de escritura posibles: año de captación y siguientes (hasta +3 años)
     const cy = op.captureYear != null ? op.captureYear : state.year;
     const eySel = op.escrituraYear != null ? op.escrituraYear : cy;
     const years = [];
@@ -688,6 +681,7 @@
       + '<div class="fb-flex fb-gap-sm fb-mt-sm">'
       + '<button class="fb-btn fb-btn-primary" onclick="App.saveConfig()">guardar objetivos</button>'
       + '<button class="fb-btn" onclick="App.exportExcel()">exportar a csv</button>'
+      + '<button class="fb-btn fb-btn-danger" onclick="App.rescueData()">⚠️ reparar datos</button>'
       + '</div></div>';
   }
 
@@ -765,16 +759,21 @@
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (!confirm('¿eliminar esta operación?')) return;
 
-    // Localizar la op en state.ops
     const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
     if (!op) return;
 
-    // Eliminarla del array visible
+    // Eliminar del estado visible
     state.ops = state.ops.filter(o => !(o.id === id && o._fromYear === fromYear));
     state.contracts = state.contracts.filter(c => c.opId !== id);
 
-    // Reconstruir y guardar
-    saveState();
+    // Eliminar quirúrgicamente del año de origen
+    const block = state.allYears[fromYear];
+    if (block) {
+      block.ops = block.ops.filter(o => o.id !== id);
+      block.contracts = block.contracts.filter(c => c.opId !== id);
+    }
+
+    FB.saveYear(fromYear, block);
     loadYear(state.year);
     renderAll();
     showToast('operación eliminada');
@@ -807,30 +806,32 @@
     };
 
     if (id === 0) {
-      // Nueva op
-      state.ops.push(Object.assign({
-        id: state.nextId++,
+      const newId = state.nextId++;
+      const newOp = Object.assign({
+        id: newId,
         month: state.editingOp.month,
-        captureYear: state.year,
-        _fromYear: state.year,
-        _role: 'both'
-      }, payload));
-      // Recalcular roles
-      state.ops = collectOpsForYear(state.year);
+        captureYear: state.year
+      }, payload);
+
+      // Guardar directamente en el año de captación
+      if (!state.allYears[state.year]) {
+        state.allYears[state.year] = { ops: [], contracts: [], goals: state.goals, nextId: state.nextId };
+      }
+      state.allYears[state.year].ops.push(newOp);
+      state.allYears[state.year].nextId = state.nextId;
+      FB.saveYear(state.year, state.allYears[state.year]);
     } else {
       // Editar op existente
-      const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
+      const block = state.allYears[fromYear];
+      if (!block) return;
+      const op = block.ops.find(o => o.id === id);
       if (op) {
         Object.assign(op, payload);
-        // Actualizar role
-        const cy = FB.getCaptureYear(op, op._fromYear);
-        const ey2 = FB.getEscrituraYear(op, op._fromYear);
-        op._role = (cy === state.year && ey2 === state.year) ? 'both' : (cy === state.year ? 'capture' : 'escritura');
+        FB.saveYear(fromYear, block);
       }
     }
 
     state.editingOp = null;
-    saveState();
     loadYear(state.year);
     renderAll();
     showToast('operación guardada');
@@ -860,7 +861,9 @@
     if (!dateEl || !addrEl || !valEl) { showToast('error: campos no encontrados'); return; }
 
     const op = state.ops.find(o => o.id === opId);
-    const isRent = op && op.type === 'ALQUILER';
+    if (!op) return;
+    const fromYear = op._fromYear != null ? op._fromYear : state.year;
+    const isRent = op.type === 'ALQUILER';
 
     const dateISO = FB.parseDateEU(dateEl.value);
     const entry = {
@@ -875,15 +878,19 @@
       entry.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
     }
 
-    const idx = state.contracts.findIndex(c => c.opId === opId);
-    if (idx >= 0) {
-      state.contracts[idx] = entry;
-    } else {
-      state.contracts.push(entry);
+    // Guardar en el año de origen de la op vinculada
+    if (!state.allYears[fromYear]) {
+      state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
     }
+    const block = state.allYears[fromYear];
+    const idx = block.contracts.findIndex(c => c.opId === opId);
+    if (idx >= 0) block.contracts[idx] = entry;
+    else block.contracts.push(entry);
+
+    FB.saveYear(fromYear, block);
 
     state.editingAddressOpId = null;
-    saveState();
+    loadYear(state.year);
     renderAll();
     showToast('dirección guardada');
   };
@@ -896,9 +903,30 @@
     state.goals.ingresos = parseFloat(document.getElementById('cfg-ing').value) || 0;
     state.goals.trimestre = parseFloat(document.getElementById('cfg-trim').value) || 0;
     state.goals.pisoValor = parseFloat(document.getElementById('cfg-pval').value) || 0;
-    saveState();
+
+    state.allYears[state.year].goals = state.goals;
+    FB.saveYear(state.year, state.allYears[state.year]);
     renderAll();
     showToast('objetivos guardados');
+  };
+
+  // ===== RESCATE =====
+  App.rescueData = function () {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
+    if (!confirm('⚠️ Esto va a:\n\n1. Eliminar contratos duplicados\n2. Eliminar contratos huérfanos (sin op vinculada)\n3. Vaciar contratos falsos de años futuros\n4. Restaurar operaciones que falten\n\n¿Continuar?')) return;
+
+    const cleaned = FB.cleanupAllYears(state.allYears);
+    state.allYears = cleaned;
+
+    // Subir TODOS los años limpios a Firestore
+    Object.keys(cleaned).forEach(yStr => {
+      FB.saveYear(parseInt(yStr, 10), cleaned[yStr]);
+    });
+
+    loadYear(state.year);
+    renderAll();
+    showToast('✅ datos reparados');
+    console.log('[Rescue] Años limpios:', Object.keys(cleaned).map(y => y + ': ' + cleaned[y].ops.length + ' ops, ' + cleaned[y].contracts.length + ' contratos'));
   };
 
   App.exportExcel = function () {
@@ -978,8 +1006,6 @@
   }
 
   App.selectYear = function (year) {
-    // Persistimos lo que haya en el año actual antes de cambiar
-    saveState();
     loadYear(year);
     renderAll();
     closeModal();

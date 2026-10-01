@@ -200,9 +200,8 @@
     // =========================================================
     // ---------- Storage con Firestore + caché local ----------
     // =========================================================
-    STORAGE_KEY: 'fincas_blanco_data_v3',  // caché local (rápida)
+    STORAGE_KEY: 'fincas_blanco_data_v3',
 
-    // UID del usuario autenticado (se rellena tras login)
     _uid: null,
     _db: null,
     _doc: null,
@@ -210,7 +209,6 @@
     _getDoc: null,
     _onSnapshot: null,
 
-    // Inicializar referencias a Firestore (llamado desde app.js)
     initFirestore(uid) {
       const F = global.FB_FIREBASE;
       if (!F) { console.warn('Firebase no está listo'); return false; }
@@ -223,7 +221,6 @@
       return true;
     },
 
-    // Cargar de la caché local (síncrono, instantáneo)
     loadLocal(year) {
       try {
         const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -235,26 +232,30 @@
 
     // Cargar desde Firestore (asíncrono)
     async loadFromCloud(year) {
-      if (!this._db || !this._uid) return null;
+      if (!this._db || !this._uid) {
+        console.warn('[FB.loadFromCloud] Falta _db o _uid');
+        return null;
+      }
       try {
         const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
         const snap = await this._getDoc(docRef);
-        if (snap.exists()) {
+        // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
+        if (snap.exists) {
           const all = snap.data();
-          // Actualizar caché local con lo que venga de la nube
+          console.log('[FB.loadFromCloud] Doc encontrado, claves:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
           return all[year] || null;
         }
+        console.log('[FB.loadFromCloud] Doc NO existe en Firestore');
         return null;
       } catch (e) {
-        console.error('Error cargando de Firestore:', e);
+        console.error('[FB.loadFromCloud] Error:', e);
         return null;
       }
     },
 
-    // Guardar: escribe en local (inmediato) y en Firestore (async)
     save(year, data) {
-      // 1) Caché local (para que la app siga funcionando sin red)
+      // 1) Caché local
       try {
         let all = {};
         const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -263,9 +264,9 @@
         }
         all[year] = data;
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
-      } catch (e) { /* quota exceeded, ignoramos */ }
+      } catch (e) {}
 
-      // 2) Firestore (asíncrono)
+      // 2) Firestore
       if (this._db && this._uid) {
         const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
         this._setDoc(docRef, { [year]: data }, { merge: true })
@@ -273,21 +274,29 @@
       }
     },
 
-    // Leer de la caché local (compatibilidad con la firma antigua)
     load(year) {
       return this.loadLocal(year);
     },
 
-    // Suscribirse a cambios en la nube (opcional, para multi-dispositivo)
+    // Suscribirse a cambios en la nube
     subscribeToCloud(onChange) {
-      if (!this._db || !this._uid) return;
+      if (!this._db || !this._uid) {
+        console.warn('[FB.subscribeToCloud] Falta _db o _uid');
+        return;
+      }
       const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
       this._onSnapshot(docRef, (snap) => {
-        if (snap.exists()) {
+        // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
+        if (snap.exists) {
           const all = snap.data();
+          console.log('[FB.subscribeToCloud] Snapshot recibido, claves:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
           if (typeof onChange === 'function') onChange(all);
+        } else {
+          console.log('[FB.subscribeToCloud] Doc no existe todavía');
         }
+      }, (err) => {
+        console.error('[FB.subscribeToCloud] Error:', err);
       });
     },
 

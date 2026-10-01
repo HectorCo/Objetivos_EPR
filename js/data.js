@@ -220,16 +220,30 @@
       return result;
     },
 
-    // ⚠️ CAMBIO IMPORTANTE: getMonthLabel ahora recibe el año actual y
-    // devuelve la etiqueta del mes con el año correcto.
-    // Índices 0-1 → noviembre y diciembre del año ANTERIOR
-    // Índices 2-13 → enero a diciembre del año ACTUAL
     getMonthLabel(idx, currentYear) {
       const y = currentYear || new Date().getFullYear();
       if (idx < 2) {
         return this.MONTHS[idx] + ' ' + (y - 1);
       }
       return this.MONTHS[idx] + ' ' + y;
+    },
+
+    // =========================================================
+    // ---------- HELPERS DE CONTRATOS ----------
+    // =========================================================
+    // Busca en qué año está guardado un contrato por opId.
+    // Devuelve { year, index } o null si no se encuentra.
+    findContractYear(all, opId) {
+      if (!all || opId == null) return null;
+      const years = Object.keys(all);
+      for (let i = 0; i < years.length; i++) {
+        const y = years[i];
+        const block = all[y] || {};
+        const contracts = block.contracts || [];
+        const idx = contracts.findIndex(c => c.opId === opId);
+        if (idx >= 0) return { year: parseInt(y, 10), index: idx };
+      }
+      return null;
     },
 
     // ---------- Storage ----------
@@ -391,6 +405,77 @@
           nextId: 31
         };
       }
+
+      return result;
+    },
+
+    // =========================================================
+    // ---------- REPARACIÓN DE CONTRATOS ----------
+    // =========================================================
+    // Deduplica contratos por opId en TODOS los años. Se queda con el que
+    // tenga la fecha (o val o contract) más reciente, y elimina el resto.
+    // Reasigna cada contrato al año de captación de su operación vinculada.
+    repairContracts(all) {
+      const result = JSON.parse(JSON.stringify(all || {}));
+
+      // 1) Índice de ops por id → { year, op }
+      const opIndex = {};
+      Object.keys(result).forEach(yStr => {
+        const y = parseInt(yStr, 10);
+        (result[yStr].ops || []).forEach(op => {
+          opIndex[op.id] = { year: y, op: op };
+        });
+      });
+
+      // 2) Recolectar todos los contratos con su año original
+      const allContracts = [];
+      Object.keys(result).forEach(yStr => {
+        const y = parseInt(yStr, 10);
+        (result[yStr].contracts || []).forEach(c => {
+          allContracts.push(Object.assign({}, c, { _srcYear: y }));
+        });
+      });
+
+      // 3) Agrupar por opId y elegir el mejor de cada uno
+      const byOpId = {};
+      const orphanContracts = [];
+      allContracts.forEach(c => {
+        if (c.opId == null || !opIndex[c.opId]) {
+          orphanContracts.push(c);
+          return;
+        }
+        if (!byOpId[c.opId]) {
+          byOpId[c.opId] = c;
+        } else {
+          // Compara por "frescura": más campos rellenos gana; empate = primero
+          const a = byOpId[c.opId];
+          const scoreA = (a.addr ? 1 : 0) + (a.date ? 1 : 0) + (Number(a.val) > 0 ? 1 : 0) + (Number(a.contract) > 0 ? 1 : 0);
+          const scoreB = (c.addr ? 1 : 0) + (c.date ? 1 : 0) + (Number(c.val) > 0 ? 1 : 0) + (Number(c.contract) > 0 ? 1 : 0);
+          if (scoreB > scoreA) byOpId[c.opId] = c;
+        }
+      });
+
+      // 4) Reasignar cada contrato al año de captación de su op
+      Object.keys(result).forEach(yStr => {
+        result[yStr].contracts = [];
+      });
+      Object.keys(byOpId).forEach(opId => {
+        const c = byOpId[opId];
+        const opIdNum = parseInt(opId, 10);
+        const info = opIndex[opIdNum];
+        if (!info) return;
+        const targetYear = info.op.captureYear != null ? info.op.captureYear : info.year;
+        if (!result[targetYear]) {
+          result[targetYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
+        }
+        result[targetYear].contracts.push({
+          opId: opIdNum,
+          date: c.date || '',
+          addr: c.addr || '',
+          val: Number(c.val) || 0,
+          contract: Number(c.contract) || 0
+        });
+      });
 
       return result;
     },

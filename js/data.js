@@ -17,8 +17,8 @@
 
     // ⚠️ Lista de correos autorizados a MODIFICAR (debe coincidir con las Reglas de Firestore)
     WRITERS: [
-      'CORREO_1@gmail.com',   // ← sustituye
-      'CORREO_2@gmail.com'    // ← sustituye
+      'hector.company.hipotecas@gmail.com',   // ← sustituye
+      'hccoordinadora@gmail.com'    // ← sustituye
     ],
 
     DEFAULT_GOALS: {

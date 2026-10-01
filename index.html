@@ -160,7 +160,6 @@
         console.error('[Fincas Blanco]', msg);
       }
 
-      // ⚠️ SUSTITUYE ESTOS VALORES POR LOS DE TU PROYECTO FIREBASE ⚠️
       var firebaseConfig = {
         apiKey: "AIzaSyAb2DNxhz3n3y9IP6SqC_Sk4U4PaM9jnbM",
         authDomain: "objetivosepr.firebaseapp.com",
@@ -196,7 +195,6 @@
           onAuthStateChanged: function (a, cb) { return a.onAuthStateChanged(cb); },
           signOut: function (a) { return a.signOut(); },
           doc: function (d, c, docId, sub, subId) {
-            // Compat: usamos rutas por string
             return d.collection(c).doc(docId).collection(sub).doc(subId);
           },
           getDoc: function (ref) { return ref.get(); },

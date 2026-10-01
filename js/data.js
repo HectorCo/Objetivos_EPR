@@ -15,7 +15,6 @@
       'TASACIÓN': 'tasación'
     },
 
-    // ⚠️ Lista de correos autorizados a MODIFICAR (debe coincidir con las Reglas de Firestore)
     WRITERS: [
       'hector.company.hipotecas@gmail.com',
       'hccoordinadora@gmail.com'
@@ -135,7 +134,6 @@
       return qty * hon * pct / 1.21;
     },
 
-    // Normaliza una op para garantizar que tiene captureYear y escrituraYear
     normalizeOp(op, captureYear) {
       const o = Object.assign({}, op);
       if (o.captureYear == null) o.captureYear = captureYear;
@@ -143,20 +141,16 @@
       return o;
     },
 
-    // Devuelve el año de captación efectivo de una op
     getCaptureYear(op, defaultYear) {
       return op.captureYear != null ? op.captureYear : (defaultYear || 2026);
     },
 
-    // Devuelve el año de escritura efectivo
     getEscrituraYear(op, defaultYear) {
       if (op.escrituraYear != null) return op.escrituraYear;
       return this.getCaptureYear(op, defaultYear);
     },
 
-    // ============ CÁLCULOS DEPENDIENTES DEL AÑO ============
-    // PYS: cuenta ops cuya captación cae en `year`, en el índice `op.month`
-    // (op.month es 0..13 = nov_año_anterior .. dic_año_actual)
+    // ---------- Cálculos por año ----------
     getPysByMonth(ops, year, contracts) {
       const arr = new Array(14).fill(0);
       ops.forEach(op => {
@@ -164,11 +158,9 @@
         if (cy !== year) return;
         if (op.month >= 0 && op.month < 14) arr[op.month] += this.calcSinIva(op);
       });
-      // Los contratos no cuentan para PYS (PYS = captación del inmueble vendido/alquilado)
       return arr;
     },
 
-    // Escritura: cuenta ops cuya escritura cae en `year`, en el mes `op.escritura`
     getEscrituraByMonth(ops, year, contracts) {
       const map = {};
       this.MONTHS_ESCRITURA.forEach(m => map[m] = 0);
@@ -178,7 +170,6 @@
         const m = String(op.escritura || '').toLowerCase();
         if (map[m] !== undefined) map[m] += this.calcSinIva(op);
       });
-      // Contratos: solo cuentan si su op vinculada se escritura en `year`
       if (Array.isArray(contracts)) {
         contracts.forEach(c => {
           const op = ops.find(o => o.id === c.opId);
@@ -192,7 +183,6 @@
       return map;
     },
 
-    // Totales del año: cuentan ops cuya escritura cae en `year`
     getTotals(ops, year, contracts) {
       let pisos = 0, locales = 0, alquileres = 0, total = 0, totalContratos = 0;
       ops.forEach(op => {
@@ -221,7 +211,6 @@
       return { pisos, locales, alquileres, total, totalContratos };
     },
 
-    // Trimestres: sobre el mapa de escritura del año
     getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
       const meses = this.MONTHS_ESCRITURA;
       const result = [];
@@ -238,9 +227,7 @@
       return this.MONTHS[idx] + ' ' + (idx < 2 ? 2025 : 2026);
     },
 
-    // =========================================================
-    // ---------- Storage con Firestore + caché local ----------
-    // =========================================================
+    // ---------- Storage ----------
     STORAGE_KEY: 'fincas_blanco_data_v3',
 
     _uid: null,
@@ -271,7 +258,6 @@
       return this.WRITERS.map(e => e.toLowerCase()).indexOf(this._email) !== -1;
     },
 
-    // Lee todo el documento (todos los años) desde localStorage
     loadAllLocal() {
       try {
         const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -280,28 +266,22 @@
       } catch (e) { return {}; }
     },
 
-    // Devuelve el objeto del año (compatibilidad con código antiguo)
     loadLocal(year) {
       const all = this.loadAllLocal();
       return all[year] || null;
     },
 
-    // Lee TODO el documento desde Firestore
     async loadAllFromCloud() {
-      if (!this._db) {
-        console.warn('[FB.loadAllFromCloud] Falta _db');
-        return null;
-      }
+      if (!this._db) { console.warn('[FB.loadAllFromCloud] Falta _db'); return null; }
       try {
         const docRef = this._doc(this._db, ...this.DOC_PATH);
         const snap = await this._getDoc(docRef);
         if (snap.exists) {
           const all = snap.data();
-          console.log('[FB.loadAllFromCloud] Doc encontrado, años:', Object.keys(all));
+          console.log('[FB.loadAllFromCloud] Años:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
           return all;
         }
-        console.log('[FB.loadAllFromCloud] Doc NO existe');
         return null;
       } catch (e) {
         console.error('[FB.loadAllFromCloud] Error:', e);
@@ -309,18 +289,15 @@
       }
     },
 
-    // Guarda un año concreto (merge parcial). Solo si es escritor.
     saveYear(year, data) {
-      // 1) Caché local
       try {
         const all = this.loadAllLocal();
         all[year] = data;
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
       } catch (e) {}
 
-      // 2) Firestore
       if (!this.isWriter()) {
-        console.warn('[FB.saveYear] Usuario sin permisos de escritura, no se sube a Firestore');
+        console.warn('[FB.saveYear] Sin permisos de escritura');
         return;
       }
       if (this._db) {
@@ -335,23 +312,96 @@
     },
 
     subscribeToCloud(onChange) {
-      if (!this._db) {
-        console.warn('[FB.subscribeToCloud] Falta _db');
-        return;
-      }
+      if (!this._db) { return; }
       const docRef = this._doc(this._db, ...this.DOC_PATH);
       this._onSnapshot(docRef, (snap) => {
         if (snap.exists) {
           const all = snap.data();
-          console.log('[FB.subscribeToCloud] Snapshot recibido, años:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
           if (typeof onChange === 'function') onChange(all);
-        } else {
-          console.log('[FB.subscribeToCloud] Doc no existe todavía');
         }
-      }, (err) => {
-        console.error('[FB.subscribeToCloud] Error:', err);
+      }, (err) => { console.error('[FB.subscribeToCloud] Error:', err); });
+    },
+
+    // ---------- RESCATE / LIMPIEZA ----------
+    // Devuelve una versión "limpia" de los datos:
+    // - Deduplica contratos por opId (mantiene el primero)
+    // - Elimina contratos cuyo opId no exista en el mismo año
+    // - Rellena campos captureYear/escrituraYear faltantes
+    // - Reañade las ops DEFAULT que falten (id 3, 23, 27)
+    cleanupAllYears(rawAll) {
+      const result = {};
+      const self = this;
+
+      Object.keys(rawAll).forEach(yStr => {
+        const y = parseInt(yStr, 10);
+        const block = rawAll[yStr] || {};
+        const opsIn = block.ops || [];
+        const contractsIn = block.contracts || [];
+
+        // 1) Ops: normaliza y deduplica por id
+        const opsSeen = {};
+        const opsClean = [];
+        opsIn.forEach(raw => {
+          const op = self.normalizeOp(raw, y);
+          if (opsSeen[op.id]) return;
+          opsSeen[op.id] = true;
+          opsClean.push(op);
+        });
+
+        // 2) Rellenar ops por defecto que falten (solo año 2026)
+        if (y === 2026) {
+          self.DEFAULT_OPS.forEach(dop => {
+            if (!opsSeen[dop.id]) {
+              opsClean.push(self.normalizeOp(dop, y));
+            }
+          });
+        }
+
+        // 3) Contratos: deduplicar por (opId, date, addr) y descartar los que
+        //    no tengan op asociada en ESTE año. Los contratos de años futuros
+        //    que apunten a ops de años anteriores NO se mantienen aquí:
+        //    la app los recalcula al vuelo por año de captación de la op vinculada.
+        const contractsSeen = {};
+        const contractsClean = [];
+        contractsIn.forEach(c => {
+          // Descartar si opId no existe en las ops de este año
+          const op = opsClean.find(o => o.id === c.opId);
+          if (!op) return;
+
+          // Deduplicar por opId + date + addr
+          const key = String(c.opId) + '|' + String(c.date || '') + '|' + String(c.addr || '');
+          if (contractsSeen[key]) return;
+          contractsSeen[key] = true;
+
+          contractsClean.push({
+            opId: c.opId,
+            date: c.date || '',
+            addr: c.addr || '',
+            val: Number(c.val) || 0,
+            contract: Number(c.contract) || 0
+          });
+        });
+
+        result[y] = {
+          ops: opsClean,
+          contracts: contractsClean,
+          goals: block.goals || Object.assign({}, self.DEFAULT_GOALS),
+          nextId: Math.max.apply(null, opsClean.map(o => o.id).concat([0])) + 1
+        };
       });
+
+      // Asegurar que 2026 existe
+      if (!result[2026]) {
+        result[2026] = {
+          ops: self.DEFAULT_OPS.map(o => self.normalizeOp(o, 2026)),
+          contracts: self.DEFAULT_RENT.map(c => Object.assign({}, c)),
+          goals: Object.assign({}, self.DEFAULT_GOALS),
+          nextId: 31
+        };
+      }
+
+      return result;
     },
 
     // ---------- Export / Import ----------

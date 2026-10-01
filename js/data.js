@@ -1,4 +1,4 @@
-// Fincas Blanco - Datos, constantes, cálculos y almacenamiento
+// Fincas Blanco - Datos, constantes, cálculos y almacenamiento (Firebase)
 (function (global) {
   'use strict';
 
@@ -197,10 +197,34 @@
       return this.MONTHS[idx] + ' ' + (idx < 2 ? 2025 : 2026);
     },
 
-    // ---------- Storage ----------
-    STORAGE_KEY: 'fincas_blanco_data_v3',
+    // =========================================================
+    // ---------- Storage con Firestore + caché local ----------
+    // =========================================================
+    STORAGE_KEY: 'fincas_blanco_data_v3',  // caché local (rápida)
 
-    load(year) {
+    // UID del usuario autenticado (se rellena tras login)
+    _uid: null,
+    _db: null,
+    _doc: null,
+    _setDoc: null,
+    _getDoc: null,
+    _onSnapshot: null,
+
+    // Inicializar referencias a Firestore (llamado desde app.js)
+    initFirestore(uid) {
+      const F = global.FB_FIREBASE;
+      if (!F) { console.warn('Firebase no está listo'); return false; }
+      this._uid = uid;
+      this._db = F.db;
+      this._doc = F.doc;
+      this._setDoc = F.setDoc;
+      this._getDoc = F.getDoc;
+      this._onSnapshot = F.onSnapshot;
+      return true;
+    },
+
+    // Cargar de la caché local (síncrono, instantáneo)
+    loadLocal(year) {
       try {
         const raw = localStorage.getItem(this.STORAGE_KEY);
         if (!raw) return null;
@@ -208,7 +232,29 @@
         return all[year] || null;
       } catch (e) { return null; }
     },
+
+    // Cargar desde Firestore (asíncrono)
+    async loadFromCloud(year) {
+      if (!this._db || !this._uid) return null;
+      try {
+        const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+        const snap = await this._getDoc(docRef);
+        if (snap.exists()) {
+          const all = snap.data();
+          // Actualizar caché local con lo que venga de la nube
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
+          return all[year] || null;
+        }
+        return null;
+      } catch (e) {
+        console.error('Error cargando de Firestore:', e);
+        return null;
+      }
+    },
+
+    // Guardar: escribe en local (inmediato) y en Firestore (async)
     save(year, data) {
+      // 1) Caché local (para que la app siga funcionando sin red)
       try {
         let all = {};
         const raw = localStorage.getItem(this.STORAGE_KEY);
@@ -217,34 +263,6 @@
         }
         all[year] = data;
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
-        return true;
-      } catch (e) { return false; }
-    },
-    exportJSON() {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (!raw) { alert('No hay datos para exportar todavía'); return; }
-      const blob = new Blob([raw], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'fincas_blanco_backup_' + new Date().toISOString().slice(0, 10) + '.json';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    },
-    importJSON(file, callback) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = JSON.parse(e.target.result);
-          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-          callback(null, data);
-        } catch (err) { callback(err); }
-      };
-      reader.readAsText(file);
-    }
-  };
+      } catch (e) { /* quota exceeded, ignoramos */ }
 
-  global.FB = FB;
-})(window);
+      // 2) Firestore (

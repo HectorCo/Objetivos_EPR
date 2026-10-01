@@ -1,12 +1,13 @@
-// Fincas Blanco - Aplicación principal (v10 - nueva lógica bono trimestral)
+// Fincas Blanco - Aplicación principal (v11 - cross-year)
 (function () {
   'use strict';
 
   // ===== ESTADO =====
   const state = {
     year: 2026,
-    ops: [],
-    contracts: [],
+    ops: [],           // ops visibles para el año actual (captación year + escritura year)
+    contracts: [],     // contratos visibles (todos, se filtran en los cálculos)
+    allYears: {},      // copia completa de todos los años guardados (para búsquedas cross-year)
     goals: {},
     editingOp: null,
     editingAddressOpId: null,
@@ -16,7 +17,57 @@
     canWrite: false
   };
 
-  // ===== PERSISTENCIA =====
+  // ===== HELPERS CROSS-YEAR =====
+  // Construye el array de ops "visibles" para el año actual:
+  // - ops cuyo captureYear === year (con su month original)
+  // - ops de otros años cuyo escrituraYear === year (marcadas con _fromYear)
+  // Cada op lleva un campo runtime:
+  //   _role: 'capture'  → solo captación en este año (no cuenta para escritura)
+  //          'escritura'→ solo escritura en este año (captación en otro año)
+  //          'both'     → ambos coinciden (caso normal)
+  //   _fromYear: año real donde está guardada
+  function collectOpsForYear(year) {
+    const result = [];
+    const all = state.allYears || {};
+
+    Object.keys(all).forEach(yStr => {
+      const y = parseInt(yStr, 10);
+      const block = all[yStr] || {};
+      const ops = block.ops || [];
+      ops.forEach(raw => {
+        const op = FB.normalizeOp(raw, y);
+        const cy = op.captureYear;
+        const ey = op.escrituraYear;
+
+        if (cy === year && ey === year) {
+          // Caso normal: ambas en el mismo año
+          result.push(Object.assign({}, op, { _role: 'both', _fromYear: y }));
+        } else if (cy === year && ey !== year) {
+          // Captada este año, se escritura en otro
+          result.push(Object.assign({}, op, { _role: 'capture', _fromYear: y }));
+        } else if (cy !== year && ey === year) {
+          // Captada en otro año, se escritura este año
+          result.push(Object.assign({}, op, { _role: 'escritura', _fromYear: y }));
+        }
+        // Si ni cy ni ey coinciden con `year`, no se incluye
+      });
+    });
+
+    return result;
+  }
+
+  // Construye el array de contratos visibles (los que se vinculan a ops visibles)
+  function collectContractsForYear(year) {
+    const result = [];
+    const all = state.allYears || {};
+    Object.keys(all).forEach(yStr => {
+      const block = all[yStr] || {};
+      const contracts = block.contracts || [];
+      contracts.forEach(c => result.push(c));
+    });
+    return result;
+  }
+
   function buildDefaultData(year) {
     if (year === 2026) {
       return {
@@ -35,30 +86,78 @@
     };
   }
 
+  // Carga el año actual desde state.allYears
   function loadYear(year) {
     state.year = year;
-    const data = FB.loadLocal(year);
-    if (data) {
-      state.ops = data.ops || [];
-      state.contracts = data.contracts || [];
-      state.goals = data.goals || Object.assign({}, FB.DEFAULT_GOALS);
-      state.nextId = data.nextId || 1;
-    } else {
-      const def = buildDefaultData(year);
-      Object.assign(state, def);
+
+    // Si el año no existe en allYears, lo creamos con defaults
+    if (!state.allYears[year]) {
+      state.allYears[year] = buildDefaultData(year);
     }
+
+    const block = state.allYears[year];
+
+    // Todas las ops visibles para este año (captación + escritura cross-year)
+    state.ops = collectOpsForYear(year);
+    state.contracts = collectContractsForYear(year);
+
+    // Goals y nextId se toman del bloque del año actual
+    state.goals = block.goals || Object.assign({}, FB.DEFAULT_GOALS);
+    state.nextId = block.nextId || 1;
   }
 
+  // Guarda los cambios: reconstruye los bloques por año y sube solo los que han cambiado
   function saveState() {
     if (!state.canWrite) {
       showToast('modo solo lectura: no puedes guardar cambios');
       return;
     }
-    FB.save(state.year, {
-      ops: state.ops,
-      contracts: state.contracts,
-      goals: state.goals,
-      nextId: state.nextId
+
+    // Reconstruimos los bloques de cada año a partir de state.ops
+    // 1) Limpiamos los arrays de ops/contracts de cada año
+    Object.keys(state.allYears).forEach(yStr => {
+      const y = parseInt(yStr, 10);
+      if (!state.allYears[yStr]) state.allYears[yStr] = { ops: [], contracts: [], goals: {}, nextId: 1 };
+      state.allYears[yStr].ops = [];
+      state.allYears[yStr].contracts = [];
+    });
+
+    // 2) Reasignamos cada op a su año de captación original
+    state.ops.forEach(op => {
+      const fromYear = op._fromYear != null ? op._fromYear : state.year;
+      if (!state.allYears[fromYear]) {
+        state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
+      }
+      // Quitamos los campos de runtime antes de guardar
+      const clean = Object.assign({}, op);
+      delete clean._role;
+      delete clean._fromYear;
+      state.allYears[fromYear].ops.push(clean);
+    });
+
+    // 3) Reasignamos cada contrato a su año de captación (a través de la op vinculada)
+    state.contracts.forEach(c => {
+      // Buscar la op vinculada para saber a qué año pertenece
+      const op = state.ops.find(o => o.id === c.opId);
+      const fromYear = op && op._fromYear != null ? op._fromYear : state.year;
+      if (!state.allYears[fromYear]) {
+        state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
+      }
+      state.allYears[fromYear].contracts.push(c);
+    });
+
+    // 4) Actualizamos goals y nextId SOLO del año actual
+    state.allYears[state.year].goals = state.goals;
+    state.allYears[state.year].nextId = state.nextId;
+
+    // 5) Subimos a Firestore solo el año actual y los años afectados
+    const yearsToSave = new Set([state.year]);
+    state.ops.forEach(op => {
+      if (op._fromYear != null) yearsToSave.add(op._fromYear);
+    });
+
+    yearsToSave.forEach(y => {
+      FB.saveYear(y, state.allYears[y]);
     });
   }
 
@@ -99,18 +198,28 @@
         showApp();
         applyRoleUI();
 
+        // Carga local inicial
+        state.allYears = FB.loadAllLocal();
+        if (!Object.keys(state.allYears).length) {
+          state.allYears[2026] = buildDefaultData(2026);
+        }
+
         loadYear(state.year);
         init();
 
-        FB.loadFromCloud(state.year).then((cloudData) => {
-          if (cloudData) {
+        // Carga de Firestore (todos los años)
+        FB.loadAllFromCloud().then((all) => {
+          if (all) {
             console.log('[Fincas Blanco] Datos cargados de Firestore');
+            state.allYears = all;
             loadYear(state.year);
             renderAll();
           }
         });
 
-        FB.subscribeToCloud(() => {
+        // Suscripción a cambios
+        FB.subscribeToCloud((all) => {
+          state.allYears = all;
           loadYear(state.year);
           renderAll();
         });
@@ -195,6 +304,7 @@
       if (!file) return;
       FB.importJSON(file, (err) => {
         if (err) { showToast('error al importar'); return; }
+        state.allYears = FB.loadAllLocal();
         loadYear(state.year);
         saveState();
         renderAll();
@@ -253,10 +363,10 @@
 
   // ===== DASHBOARD =====
   function renderDashboard() {
-    const t = FB.getTotals(state.ops, state.contracts);
-    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
+    const t = FB.getTotals(state.ops, state.year, state.contracts);
+    const esc = FB.getEscrituraByMonth(state.ops, state.year, state.contracts);
     const trimData = FB.getTrimestreData(esc, state.goals.trimestre, state.goals.pisoValor);
-    const pys = FB.getPysByMonth(state.ops, state.contracts);
+    const pys = FB.getPysByMonth(state.ops, state.year, state.contracts);
 
     const kpiContainer = document.getElementById('kpi-cards');
     if (kpiContainer) {
@@ -288,16 +398,11 @@
         + '</div>';
     }
 
-    // Gráfico barras PYS
     FBCharts.renderBarChart('pys-chart', pys, FB.MONTHS_SHORT);
 
-    // Gráfico barras escritura en el dashboard
     const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
     FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
-    // Tabla bono: nueva lógica
-    //   falta = objetivo − ingresos   (positivo = falta por escriturar)
-    //   pisos = entero, ceil de la división, 0 si no falta
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
@@ -320,6 +425,8 @@
     if (!container) return;
 
     let html = '';
+
+    // Cabeceras de año para las ops que no son del año actual
     for (let m = 0; m < 14; m++) {
       const ops = state.ops.filter(o => o.month === m);
       const isEditingNew = state.editingOp && state.editingOp.id === 0 && state.editingOp.month === m;
@@ -328,12 +435,12 @@
       html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m) + '</div>';
       html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>'
             + '<th>tipo</th><th class="center">cant</th><th class="num">honorarios</th>'
-            + '<th>escritura</th><th class="num">%</th><th class="num">sin iva</th>'
+            + '<th>escritura</th><th class="center">año escr.</th><th class="num">%</th><th class="num">sin iva</th>'
             + (state.canWrite ? '<th></th>' : '')
             + '</tr></thead><tbody>';
 
       ops.forEach(op => {
-        if (state.editingOp && state.editingOp.id === op.id) {
+        if (state.editingOp && state.editingOp.id === op.id && state.editingOp._fromYear === op._fromYear) {
           html += renderOpEditRow(op);
         } else {
           html += renderOpRow(op);
@@ -348,6 +455,30 @@
     container.innerHTML = html || '<div class="fb-muted fb-center" style="padding:60px 20px">no hay operaciones registradas.</div>';
   }
 
+  // Estilos para destacar ops cross-year
+  function getEscrituraCell(op) {
+    const ey = FB.getEscrituraYear(op, state.year);
+    const cy = FB.getCaptureYear(op, state.year);
+    const mes = String(op.escritura || '').toLowerCase();
+
+    if (ey === cy) {
+      // Caso normal: solo mes, tal cual
+      return '<td style="text-transform:capitalize">' + mes + '</td>'
+           + '<td class="center fb-muted">—</td>';
+    }
+
+    // Cross-year: mostrar mes + año (con estilos según dirección)
+    if (ey > cy) {
+      // Captada en el año actual pero escriturada más tarde → rojo/negrita en el año
+      return '<td style="text-transform:capitalize">' + mes + '</td>'
+           + '<td class="center"><strong style="color:#dc2626">' + ey + '</strong></td>';
+    } else {
+      // Captada antes, escriturada en el año actual → gris/nota
+      return '<td style="text-transform:capitalize">' + mes + '</td>'
+           + '<td class="center"><span class="fb-muted" style="font-size:11px">(capt. ' + cy + ')</span></td>';
+    }
+  }
+
   function renderOpRow(op) {
     const badgeClass = {
       'VENTA PISO': 'fb-badge-piso',
@@ -357,17 +488,20 @@
       'TASACIÓN': 'fb-badge-tas'
     }[op.type] || 'fb-badge-piso';
 
+    const id = op.id;
+    const fromYear = op._fromYear;
+
     return '<tr>'
       + '<td><span class="fb-badge ' + badgeClass + '">' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</span></td>'
       + '<td class="center">' + FB.fmt0(op.qty) + '</td>'
       + '<td class="num">' + FB.fmt(op.honorarios) + '</td>'
-      + '<td style="text-transform:capitalize">' + op.escritura + '</td>'
+      + getEscrituraCell(op)
       + '<td class="num">' + FB.fmtPct(op.pct) + '</td>'
       + '<td class="num" style="font-weight:500">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
       + (state.canWrite
           ? '<td class="num" style="width:90px"><span class="fb-row-actions">'
-            + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(' + op.id + ')">editar</button>'
-            + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(' + op.id + ')">×</button>'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(' + id + ',' + fromYear + ')">editar</button>'
+            + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(' + id + ',' + fromYear + ')">×</button>'
             + '</span></td>'
           : '')
       + '</tr>';
@@ -377,21 +511,31 @@
     const typeOpts = FB.TYPES.map(t => '<option value="' + t + '"' + (op.type === t ? ' selected' : '') + '>' + FB.TYPE_LABELS[t] + '</option>').join('');
     const escOpts = FB.MONTHS_ESCRITURA.map(m => '<option value="' + m + '"' + (op.escritura === m ? ' selected' : '') + '>' + m + '</option>').join('');
 
+    // Años de escritura posibles: año de captación y siguientes (hasta +3 años)
+    const cy = op.captureYear != null ? op.captureYear : state.year;
+    const eySel = op.escrituraYear != null ? op.escrituraYear : cy;
+    const years = [];
+    for (let y = cy - 1; y <= cy + 3; y++) years.push(y);
+    const yearOpts = years.map(y => '<option value="' + y + '"' + (y === eySel ? ' selected' : '') + '>' + y + '</option>').join('');
+
+    const key = op.id + '-' + (op._fromYear != null ? op._fromYear : state.year);
+
     return '<tr class="fb-edit-row">'
-      + '<td><select class="fb-select" id="op-type-' + op.id + '" style="min-width:110px">' + typeOpts + '</select></td>'
-      + '<td><input class="fb-input" id="op-qty-' + op.id + '" type="number" value="' + (op.qty != null ? op.qty : 1) + '" style="width:55px;text-align:center"></td>'
-      + '<td><input class="fb-input" id="op-hon-' + op.id + '" type="number" step="0.01" value="' + (op.honorarios != null ? op.honorarios : 0) + '" style="width:90px;text-align:right"></td>'
-      + '<td><select class="fb-select" id="op-esc-' + op.id + '" style="min-width:95px">' + escOpts + '</select></td>'
-      + '<td><input class="fb-input" id="op-pct-' + op.id + '" type="number" step="0.05" value="' + (op.pct != null ? op.pct : 1) + '" style="width:55px;text-align:right"></td>'
+      + '<td><select class="fb-select" id="op-type-' + key + '" style="min-width:110px">' + typeOpts + '</select></td>'
+      + '<td><input class="fb-input" id="op-qty-' + key + '" type="number" value="' + (op.qty != null ? op.qty : 1) + '" style="width:55px;text-align:center"></td>'
+      + '<td><input class="fb-input" id="op-hon-' + key + '" type="number" step="0.01" value="' + (op.honorarios != null ? op.honorarios : 0) + '" style="width:90px;text-align:right"></td>'
+      + '<td><select class="fb-select" id="op-esc-' + key + '" style="min-width:95px">' + escOpts + '</select></td>'
+      + '<td><select class="fb-select" id="op-escyear-' + key + '" style="min-width:70px">' + yearOpts + '</select></td>'
+      + '<td><input class="fb-input" id="op-pct-' + key + '" type="number" step="0.05" value="' + (op.pct != null ? op.pct : 1) + '" style="width:55px;text-align:right"></td>'
       + '<td class="num" style="color:var(--kimi-color-text-secondary)">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
-      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveOp(' + op.id + ')">guardar</button> '
+      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveOp(' + op.id + ',' + (op._fromYear != null ? op._fromYear : 'null') + ')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelEdit()">cancelar</button></td>'
       + '</tr>';
   }
 
   // ===== RESUMEN =====
   function renderResumen() {
-    const t = FB.getTotals(state.ops, state.contracts);
+    const t = FB.getTotals(state.ops, state.year, state.contracts);
     const cumpl = state.goals.ingresos ? (t.total / state.goals.ingresos) : 0;
 
     const kpiContainer = document.getElementById('resumen-kpis');
@@ -549,7 +693,7 @@
 
   // ===== GRÁFICOS =====
   function renderGraficos() {
-    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
+    const esc = FB.getEscrituraByMonth(state.ops, state.year, state.contracts);
     const meses = FB.MONTHS_ESCRITURA;
 
     const actualCumul = [];
@@ -564,7 +708,7 @@
 
     FBCharts.renderLineChart('chart-line', actualCumul, targetCumul, meses.map(m => m.slice(0, 3)));
 
-    const t = FB.getTotals(state.ops, state.contracts);
+    const t = FB.getTotals(state.ops, state.year, state.contracts);
     FBCharts.renderDonut('chart-donut', [t.pisos, t.locales, t.alquileres], ['pisos', 'locales', 'alquileres']);
 
     const escValues = meses.map(m => esc[m] || 0);
@@ -586,11 +730,14 @@
     state.editingOp = {
       id: 0,
       month: monthIndex,
+      captureYear: state.year,
+      escrituraYear: state.year,
       type: 'VENTA PISO',
       qty: 1,
       honorarios: 0,
       escritura: FB.MONTHS_ESCRITURA[currentMonth] || 'enero',
-      pct: 1
+      pct: 1,
+      _fromYear: state.year
     };
     switchTab('operaciones');
     setTimeout(() => {
@@ -605,55 +752,86 @@
     }, 60);
   };
 
-  App.editOp = function (id) {
+  App.editOp = function (id, fromYear) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    const op = state.ops.find(o => o.id === id);
+    const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
     if (op) {
       state.editingOp = JSON.parse(JSON.stringify(op));
       renderOperaciones();
     }
   };
 
-  App.delOp = function (id) {
+  App.delOp = function (id, fromYear) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    if (confirm('¿eliminar esta operación?')) {
-      state.ops = state.ops.filter(o => o.id !== id);
-      state.contracts = state.contracts.filter(c => c.opId !== id);
-      saveState();
-      renderAll();
-      showToast('operación eliminada');
-    }
+    if (!confirm('¿eliminar esta operación?')) return;
+
+    // Localizar la op en state.ops
+    const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
+    if (!op) return;
+
+    // Eliminarla del array visible
+    state.ops = state.ops.filter(o => !(o.id === id && o._fromYear === fromYear));
+    state.contracts = state.contracts.filter(c => c.opId !== id);
+
+    // Reconstruir y guardar
+    saveState();
+    loadYear(state.year);
+    renderAll();
+    showToast('operación eliminada');
   };
 
-  App.saveOp = function (id) {
+  App.saveOp = function (id, fromYear) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    const typeEl = document.getElementById('op-type-' + id);
-    const qtyEl = document.getElementById('op-qty-' + id);
-    const honEl = document.getElementById('op-hon-' + id);
-    const escEl = document.getElementById('op-esc-' + id);
-    const pctEl = document.getElementById('op-pct-' + id);
 
-    if (!typeEl || !qtyEl || !honEl || !escEl || !pctEl) {
+    const key = id + '-' + (fromYear != null ? fromYear : state.year);
+    const typeEl = document.getElementById('op-type-' + key);
+    const qtyEl = document.getElementById('op-qty-' + key);
+    const honEl = document.getElementById('op-hon-' + key);
+    const escEl = document.getElementById('op-esc-' + key);
+    const escyEl = document.getElementById('op-escyear-' + key);
+    const pctEl = document.getElementById('op-pct-' + key);
+
+    if (!typeEl || !qtyEl || !honEl || !escEl || !escyEl || !pctEl) {
       showToast('error: no se encontraron los campos');
       return;
     }
 
+    const ey = parseInt(escyEl.value, 10) || state.year;
     const payload = {
       type: typeEl.value,
       qty: parseFloat(qtyEl.value) || 0,
       honorarios: parseFloat(honEl.value) || 0,
       escritura: escEl.value,
+      escrituraYear: ey,
       pct: parseFloat(pctEl.value) || 0
     };
 
     if (id === 0) {
-      state.ops.push(Object.assign({ id: state.nextId++, month: state.editingOp.month }, payload));
+      // Nueva op
+      state.ops.push(Object.assign({
+        id: state.nextId++,
+        month: state.editingOp.month,
+        captureYear: state.year,
+        _fromYear: state.year,
+        _role: 'both'
+      }, payload));
+      // Recalcular roles
+      state.ops = collectOpsForYear(state.year);
     } else {
-      const op = state.ops.find(o => o.id === id);
-      if (op) Object.assign(op, payload);
+      // Editar op existente
+      const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
+      if (op) {
+        Object.assign(op, payload);
+        // Actualizar role
+        const cy = FB.getCaptureYear(op, op._fromYear);
+        const ey2 = FB.getEscrituraYear(op, op._fromYear);
+        op._role = (cy === state.year && ey2 === state.year) ? 'both' : (cy === state.year ? 'capture' : 'escritura');
+      }
     }
+
     state.editingOp = null;
     saveState();
+    loadYear(state.year);
     renderAll();
     showToast('operación guardada');
   };
@@ -724,10 +902,10 @@
   };
 
   App.exportExcel = function () {
-    const t = FB.getTotals(state.ops, state.contracts);
-    const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
+    const t = FB.getTotals(state.ops, state.year, state.contracts);
+    const esc = FB.getEscrituraByMonth(state.ops, state.year, state.contracts);
     const trimData = FB.getTrimestreData(esc, state.goals.trimestre, state.goals.pisoValor);
-    const pys = FB.getPysByMonth(state.ops, state.contracts);
+    const pys = FB.getPysByMonth(state.ops, state.year, state.contracts);
     const NL = '\r\n';
     const num = (v) => FB.fmt(v).replace(' €', '').replace(/\./g, '').replace(',', '.');
 
@@ -756,10 +934,11 @@
     lines.push('Ingresos totales,' + num(t.total) + ',' + num(state.goals.ingresos));
     lines.push('');
     lines.push('OPERACIONES');
-    lines.push('Mes,Tipo,Cantidad,Honorarios,Escritura,%,Sin IVA');
+    lines.push('Mes,Año escr.,Tipo,Cantidad,Honorarios,Escritura,%,Sin IVA');
     state.ops.forEach(op => {
       lines.push([
         FB.getMonthLabel(op.month),
+        FB.getEscrituraYear(op, state.year),
         op.type,
         op.qty,
         num(op.honorarios),
@@ -799,6 +978,7 @@
   }
 
   App.selectYear = function (year) {
+    // Persistimos lo que haya en el año actual antes de cambiar
     saveState();
     loadYear(year);
     renderAll();

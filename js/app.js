@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v14 - KPI inmuebles para objetivo)
+// Fincas Blanco - Aplicación principal (v16 - nomenclatura PYS)
 (function () {
   'use strict';
 
@@ -383,7 +383,7 @@
         + '</div>';
     }
 
-    // ===== NUEVO KPI: inmuebles para alcanzar objetivo =====
+    // ===== KPI: inmuebles para alcanzar objetivo =====
     const objetivoCard = document.getElementById('objetivo-restante-card');
     if (objetivoCard) {
       const faltaIngresos = state.goals.ingresos - t.total;
@@ -447,6 +447,7 @@
 
       html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m) + '</div>';
       html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>'
+            + '<th>mes pys</th>'
             + '<th>tipo</th><th class="center">cant</th><th class="num">honorarios</th>'
             + '<th>escritura</th><th class="center">año escr.</th><th class="num">%</th><th class="num">sin iva</th>'
             + (state.canWrite ? '<th></th>' : '')
@@ -498,6 +499,7 @@
     const fromYear = op._fromYear;
 
     return '<tr>'
+      + '<td class="fb-muted fb-xs">' + FB.MONTHS_SHORT[op.month] + '</td>'
       + '<td><span class="fb-badge ' + badgeClass + '">' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</span></td>'
       + '<td class="center">' + FB.fmt0(op.qty) + '</td>'
       + '<td class="num">' + FB.fmt(op.honorarios) + '</td>'
@@ -517,6 +519,11 @@
     const typeOpts = FB.TYPES.map(t => '<option value="' + t + '"' + (op.type === t ? ' selected' : '') + '>' + FB.TYPE_LABELS[t] + '</option>').join('');
     const escOpts = FB.MONTHS_ESCRITURA.map(m => '<option value="' + m + '"' + (op.escritura === m ? ' selected' : '') + '>' + m + '</option>').join('');
 
+    const monthOpts = FB.MONTHS.map((m, idx) => {
+      const label = FB.getMonthLabel(idx);
+      return '<option value="' + idx + '"' + (op.month === idx ? ' selected' : '') + '>' + label + '</option>';
+    }).join('');
+
     const cy = op.captureYear != null ? op.captureYear : state.year;
     const eySel = op.escrituraYear != null ? op.escrituraYear : cy;
     const years = [];
@@ -526,6 +533,7 @@
     const key = op.id + '-' + (op._fromYear != null ? op._fromYear : state.year);
 
     return '<tr class="fb-edit-row">'
+      + '<td><select class="fb-select" id="op-month-' + key + '" style="min-width:130px">' + monthOpts + '</select></td>'
       + '<td><select class="fb-select" id="op-type-' + key + '" style="min-width:110px">' + typeOpts + '</select></td>'
       + '<td><input class="fb-input" id="op-qty-' + key + '" type="number" value="' + (op.qty != null ? op.qty : 1) + '" style="width:55px;text-align:center"></td>'
       + '<td><input class="fb-input" id="op-hon-' + key + '" type="number" step="0.01" value="' + (op.honorarios != null ? op.honorarios : 0) + '" style="width:90px;text-align:right"></td>'
@@ -796,6 +804,7 @@
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
 
     const key = id + '-' + (fromYear != null ? fromYear : state.year);
+    const monthEl = document.getElementById('op-month-' + key);
     const typeEl = document.getElementById('op-type-' + key);
     const qtyEl = document.getElementById('op-qty-' + key);
     const honEl = document.getElementById('op-hon-' + key);
@@ -803,11 +812,12 @@
     const escyEl = document.getElementById('op-escyear-' + key);
     const pctEl = document.getElementById('op-pct-' + key);
 
-    if (!typeEl || !qtyEl || !honEl || !escEl || !escyEl || !pctEl) {
+    if (!monthEl || !typeEl || !qtyEl || !honEl || !escEl || !escyEl || !pctEl) {
       showToast('error: no se encontraron los campos');
       return;
     }
 
+    const selectedMonth = parseInt(monthEl.value, 10);
     const ey = parseInt(escyEl.value, 10) || state.year;
     const payload = {
       type: typeEl.value,
@@ -822,7 +832,7 @@
       const newId = state.nextId++;
       const newOp = Object.assign({
         id: newId,
-        month: state.editingOp.month,
+        month: isNaN(selectedMonth) ? state.editingOp.month : selectedMonth,
         captureYear: state.year
       }, payload);
 
@@ -838,6 +848,7 @@
       const op = block.ops.find(o => o.id === id);
       if (op) {
         Object.assign(op, payload);
+        if (!isNaN(selectedMonth)) op.month = selectedMonth;
         FB.saveYear(fromYear, block);
       }
     }
@@ -920,7 +931,6 @@
     showToast('objetivos guardados');
   };
 
-  // ===== RESCATE =====
   App.rescueData = function () {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (!confirm('⚠️ Esto va a:\n\n1. Eliminar operaciones con cantidad 0 (ops fantasma)\n2. Eliminar contratos duplicados\n3. Eliminar contratos huérfanos\n4. NO restaurar ops borradas por error\n\n¿Continuar?')) return;

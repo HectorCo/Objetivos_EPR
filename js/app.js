@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v8 - Firestore compartido + roles)
+// Fincas Blanco - Aplicación principal (v9 - dashboard gráfico escritura + pisos redondeados)
 (function () {
   'use strict';
 
@@ -13,7 +13,7 @@
     nextId: 1,
     activeTab: 'dashboard',
     user: null,
-    canWrite: false   // ← nuevo
+    canWrite: false
   };
 
   // ===== PERSISTENCIA =====
@@ -144,7 +144,6 @@
 
   // Mostrar/ocultar elementos de escritura según rol
   function applyRoleUI() {
-    // Barra superior: insignia "solo lectura" si no puede escribir
     let badge = document.getElementById('fb-readonly-badge');
     if (!state.canWrite) {
       if (!badge) {
@@ -159,11 +158,9 @@
       badge.remove();
     }
 
-    // Ocultar botón FAB de nueva operación
     const fab = document.getElementById('btn-new-op');
     if (fab) fab.style.display = state.canWrite ? '' : 'none';
 
-    // Ocultar botones de importar (los lectores no deberían tocar datos)
     const btnImport = document.getElementById('btn-import');
     if (btnImport) btnImport.style.display = state.canWrite ? '' : 'none';
   }
@@ -295,36 +292,25 @@
         + '</div>';
     }
 
+    // Gráfico barras PYS
     FBCharts.renderBarChart('pys-chart', pys, FB.MONTHS_SHORT);
 
-    const escTable = document.getElementById('escritura-table');
-    if (escTable) {
-      let tbody = '';
-      FB.MONTHS_ESCRITURA.forEach((m, i) => {
-        const v = esc[m] || 0;
-        const trimIdx = Math.floor(i / 3);
-        const isTrimEnd = (i + 1) % 3 === 0;
-        tbody += '<tr><td style="text-transform:capitalize">' + m + '</td><td class="num">' + FB.fmt(v) + '</td></tr>';
-        if (isTrimEnd && trimData[trimIdx]) {
-          const td = trimData[trimIdx];
-          tbody += '<tr style="background:color-mix(in srgb,var(--kimi-color-bg-hover) 40%,transparent)">'
-                 + '<td colspan="2" style="text-align:right;font-size:12px;color:var(--kimi-color-text-secondary);padding:6px 10px">'
-                 + td.trimestre + 'º trimestre: falta <span class="' + (td.falta < 0 ? 'fb-negative' : 'fb-positive') + '">' + FB.fmt(td.falta) + '</span> · ' + FB.fmt(td.pisos) + ' pisos'
-                 + '</td></tr>';
-        }
-      });
-      escTable.innerHTML = '<thead><tr><th>mes</th><th class="num">importe</th></tr></thead><tbody>' + tbody + '</tbody>';
-    }
+    // NUEVO: gráfico barras escritura en el dashboard
+    const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
+    FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
+    // Tabla bono (con pisos en entero, redondeo al alza)
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
       trimData.forEach(td => {
+        // Redondeo al alza para el número de pisos
+        const pisosEntero = Math.ceil(td.pisos);
         tbody += '<tr>'
               + '<td>' + td.trimestre + 'º</td>'
               + '<td class="num">' + FB.fmt(td.ingresos) + '</td>'
               + '<td class="num ' + (td.falta < 0 ? 'fb-negative' : 'fb-positive') + '">' + FB.fmt(td.falta) + '</td>'
-              + '<td class="num">' + FB.fmt(td.pisos) + '</td>'
+              + '<td class="num">' + pisosEntero + '</td>'
               + '</tr>';
       });
       bonoTable.innerHTML = '<thead><tr><th>trimestre</th><th class="num">ingresos</th><th class="num">falta</th><th class="num">pisos</th></tr></thead><tbody>' + tbody + '</tbody>';
@@ -763,7 +749,7 @@
     lines.push('');
     lines.push('FALTA PARA BONO (TRIMESTRAL)');
     lines.push('Trimestre,Ingresos,Falta,Pisos');
-    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(td.falta) + ',' + td.pisos.toFixed(2)));
+    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(td.falta) + ',' + Math.ceil(td.pisos)));
     lines.push('');
     lines.push('RESUMEN DE OBJETIVOS');
     lines.push('Concepto,Real,Objetivo');

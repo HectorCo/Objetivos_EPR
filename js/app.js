@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v9 - dashboard gráfico escritura + pisos redondeados)
+// Fincas Blanco - Aplicación principal (v10 - nueva lógica bono trimestral)
 (function () {
   'use strict';
 
@@ -99,11 +99,9 @@
         showApp();
         applyRoleUI();
 
-        // 1) Cargar caché local para arrancar rápido
         loadYear(state.year);
         init();
 
-        // 2) Pedir datos a Firestore
         FB.loadFromCloud(state.year).then((cloudData) => {
           if (cloudData) {
             console.log('[Fincas Blanco] Datos cargados de Firestore');
@@ -112,7 +110,6 @@
           }
         });
 
-        // 3) Suscripción en tiempo real
         FB.subscribeToCloud(() => {
           loadYear(state.year);
           renderAll();
@@ -142,7 +139,6 @@
     document.getElementById('fb-main').style.display = 'block';
   }
 
-  // Mostrar/ocultar elementos de escritura según rol
   function applyRoleUI() {
     let badge = document.getElementById('fb-readonly-badge');
     if (!state.canWrite) {
@@ -295,22 +291,23 @@
     // Gráfico barras PYS
     FBCharts.renderBarChart('pys-chart', pys, FB.MONTHS_SHORT);
 
-    // NUEVO: gráfico barras escritura en el dashboard
+    // Gráfico barras escritura en el dashboard
     const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
     FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
-    // Tabla bono (con pisos en entero, redondeo al alza)
+    // Tabla bono: nueva lógica
+    //   falta = objetivo − ingresos   (positivo = falta por escriturar)
+    //   pisos = entero, ceil de la división, 0 si no falta
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
       trimData.forEach(td => {
-        // Redondeo al alza para el número de pisos
-        const pisosEntero = Math.ceil(td.pisos);
+        const faltaClass = td.falta > 0 ? 'fb-negative' : 'fb-positive';
         tbody += '<tr>'
               + '<td>' + td.trimestre + 'º</td>'
               + '<td class="num">' + FB.fmt(td.ingresos) + '</td>'
-              + '<td class="num ' + (td.falta < 0 ? 'fb-negative' : 'fb-positive') + '">' + FB.fmt(td.falta) + '</td>'
-              + '<td class="num">' + pisosEntero + '</td>'
+              + '<td class="num ' + faltaClass + '">' + FB.fmt(td.falta) + '</td>'
+              + '<td class="num">' + td.pisos + '</td>'
               + '</tr>';
       });
       bonoTable.innerHTML = '<thead><tr><th>trimestre</th><th class="num">ingresos</th><th class="num">falta</th><th class="num">pisos</th></tr></thead><tbody>' + tbody + '</tbody>';
@@ -749,7 +746,7 @@
     lines.push('');
     lines.push('FALTA PARA BONO (TRIMESTRAL)');
     lines.push('Trimestre,Ingresos,Falta,Pisos');
-    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(td.falta) + ',' + Math.ceil(td.pisos)));
+    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(td.falta) + ',' + td.pisos));
     lines.push('');
     lines.push('RESUMEN DE OBJETIVOS');
     lines.push('Concepto,Real,Objetivo');

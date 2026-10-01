@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v7 - Firebase)
+// Fincas Blanco - Aplicación principal (v8 - Firestore compartido + roles)
 (function () {
   'use strict';
 
@@ -12,7 +12,8 @@
     editingAddressOpId: null,
     nextId: 1,
     activeTab: 'dashboard',
-    user: null
+    user: null,
+    canWrite: false   // ← nuevo
   };
 
   // ===== PERSISTENCIA =====
@@ -49,6 +50,10 @@
   }
 
   function saveState() {
+    if (!state.canWrite) {
+      showToast('modo solo lectura: no puedes guardar cambios');
+      return;
+    }
     FB.save(state.year, {
       ops: state.ops,
       contracts: state.contracts,
@@ -68,7 +73,6 @@
 
     const { auth, onAuthStateChanged, signInWithPopup, provider, signOut } = F;
 
-    // Configurar el botón de login
     const btn = document.getElementById('fb-auth-btn');
     const status = document.getElementById('fb-auth-status');
     btn.style.display = 'inline-flex';
@@ -85,38 +89,41 @@
       });
     });
 
-    // Reaccionar a cambios de sesión
     onAuthStateChanged(auth, (user) => {
       if (user) {
         state.user = user;
-        FB.initFirestore(user.uid);
+        FB.initFirestore(user);
+        state.canWrite = FB.isWriter();
+        console.log('[Fincas Blanco] Usuario:', user.email, '- Escritor:', state.canWrite);
+
         showApp();
-        // Si localStorage está vacío, intentar cargar de Firestore
-        const local = FB.loadLocal(state.year);
-        if (!local) {
-          FB.loadFromCloud(state.year).then((cloudData) => {
-            if (cloudData) {
-              loadYear(state.year);
-              renderAll();
-            }
-          });
-        }
-        // Suscribirse a cambios de la nube (por si se edita desde otro dispositivo)
-        FB.subscribeToCloud((all) => {
-          // Recargar el año actual si cambia desde la nube
-          if (all[state.year]) {
+        applyRoleUI();
+
+        // 1) Cargar caché local para arrancar rápido
+        loadYear(state.year);
+        init();
+
+        // 2) Pedir datos a Firestore
+        FB.loadFromCloud(state.year).then((cloudData) => {
+          if (cloudData) {
+            console.log('[Fincas Blanco] Datos cargados de Firestore');
             loadYear(state.year);
             renderAll();
           }
         });
-        init();
+
+        // 3) Suscripción en tiempo real
+        FB.subscribeToCloud(() => {
+          loadYear(state.year);
+          renderAll();
+        });
       } else {
         state.user = null;
+        state.canWrite = false;
         showLogin();
       }
     });
 
-    // Botón de logout
     const btnLogout = document.getElementById('btn-logout');
     if (btnLogout) {
       btnLogout.addEventListener('click', () => {
@@ -133,6 +140,32 @@
   function showApp() {
     document.getElementById('fb-auth-screen').style.display = 'none';
     document.getElementById('fb-main').style.display = 'block';
+  }
+
+  // Mostrar/ocultar elementos de escritura según rol
+  function applyRoleUI() {
+    // Barra superior: insignia "solo lectura" si no puede escribir
+    let badge = document.getElementById('fb-readonly-badge');
+    if (!state.canWrite) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.id = 'fb-readonly-badge';
+        badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:9999px;border:1px solid #dc2626;color:#dc2626;font-size:12px;font-weight:500;';
+        badge.textContent = 'solo lectura';
+        const header = document.querySelector('.fb-header > div:last-child');
+        if (header) header.insertBefore(badge, header.firstChild);
+      }
+    } else if (badge) {
+      badge.remove();
+    }
+
+    // Ocultar botón FAB de nueva operación
+    const fab = document.getElementById('btn-new-op');
+    if (fab) fab.style.display = state.canWrite ? '' : 'none';
+
+    // Ocultar botones de importar (los lectores no deberían tocar datos)
+    const btnImport = document.getElementById('btn-import');
+    if (btnImport) btnImport.style.display = state.canWrite ? '' : 'none';
   }
 
   // ===== INICIALIZACIÓN =====
@@ -170,7 +203,7 @@
       FB.importJSON(file, (err) => {
         if (err) { showToast('error al importar'); return; }
         loadYear(state.year);
-        saveState(); // reenvía a Firestore
+        saveState();
         renderAll();
         showToast('backup importado y subido a la nube');
       });
@@ -217,6 +250,7 @@
     renderConfig();
     if (state.activeTab === 'graficos') renderGraficos();
     updateYearDisplay();
+    applyRoleUI();
   }
 
   function updateYearDisplay() {
@@ -311,7 +345,8 @@
       html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m) + '</div>';
       html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>'
             + '<th>tipo</th><th class="center">cant</th><th class="num">honorarios</th>'
-            + '<th>escritura</th><th class="num">%</th><th class="num">sin iva</th><th></th>'
+            + '<th>escritura</th><th class="num">%</th><th class="num">sin iva</th>'
+            + (state.canWrite ? '<th></th>' : '')
             + '</tr></thead><tbody>';
 
       ops.forEach(op => {
@@ -327,7 +362,7 @@
       html += '</tbody></table></div>';
     }
 
-    container.innerHTML = html || '<div class="fb-muted fb-center" style="padding:60px 20px">no hay operaciones registradas. haz clic en "+ nueva operación" para empezar.</div>';
+    container.innerHTML = html || '<div class="fb-muted fb-center" style="padding:60px 20px">no hay operaciones registradas.</div>';
   }
 
   function renderOpRow(op) {
@@ -346,10 +381,13 @@
       + '<td style="text-transform:capitalize">' + op.escritura + '</td>'
       + '<td class="num">' + FB.fmtPct(op.pct) + '</td>'
       + '<td class="num" style="font-weight:500">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
-      + '<td class="num" style="width:90px"><span class="fb-row-actions">'
-      + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(' + op.id + ')">editar</button>'
-      + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(' + op.id + ')">×</button>'
-      + '</span></td></tr>';
+      + (state.canWrite
+          ? '<td class="num" style="width:90px"><span class="fb-row-actions">'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(' + op.id + ')">editar</button>'
+            + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(' + op.id + ')">×</button>'
+            + '</span></td>'
+          : '')
+      + '</tr>';
   }
 
   function renderOpEditRow(op) {
@@ -358,10 +396,10 @@
 
     return '<tr class="fb-edit-row">'
       + '<td><select class="fb-select" id="op-type-' + op.id + '" style="min-width:110px">' + typeOpts + '</select></td>'
-      + '<td><input class="fb-input" id="op-qty-' + op.id + '" type="number" value="' + op.qty + '" style="width:55px;text-align:center"></td>'
-      + '<td><input class="fb-input" id="op-hon-' + op.id + '" type="number" step="0.01" value="' + op.honorarios + '" style="width:90px;text-align:right"></td>'
+      + '<td><input class="fb-input" id="op-qty-' + op.id + '" type="number" value="' + (op.qty != null ? op.qty : 1) + '" style="width:55px;text-align:center"></td>'
+      + '<td><input class="fb-input" id="op-hon-' + op.id + '" type="number" step="0.01" value="' + (op.honorarios != null ? op.honorarios : 0) + '" style="width:90px;text-align:right"></td>'
       + '<td><select class="fb-select" id="op-esc-' + op.id + '" style="min-width:95px">' + escOpts + '</select></td>'
-      + '<td><input class="fb-input" id="op-pct-' + op.id + '" type="number" step="0.05" value="' + op.pct + '" style="width:55px;text-align:right"></td>'
+      + '<td><input class="fb-input" id="op-pct-' + op.id + '" type="number" step="0.05" value="' + (op.pct != null ? op.pct : 1) + '" style="width:55px;text-align:right"></td>'
       + '<td class="num" style="color:var(--kimi-color-text-secondary)">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
       + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveOp(' + op.id + ')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelEdit()">cancelar</button></td>'
@@ -403,7 +441,7 @@
       const ventas = state.ops.filter(o => o.type === 'VENTA PISO' || o.type === 'VENTA LOCAL' || o.type === 'VENTA PARKING');
       let tbody = '';
       if (ventas.length === 0) {
-        tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de venta. añádelas en la pestaña "operaciones".</td></tr>';
+        tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de venta.</td></tr>';
       } else {
         ventas.forEach(op => {
           const linked = state.contracts.find(c => c.opId === op.id) || {};
@@ -415,7 +453,9 @@
           }
         });
       }
-      soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
+      soldTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">importe</th>'
+        + (state.canWrite ? '<th></th>' : '')
+        + '</tr></thead><tbody>' + tbody + '</tbody>';
     }
 
     const rentTable = document.getElementById('dir-alquiladas');
@@ -423,7 +463,7 @@
       const alquileres = state.ops.filter(o => o.type === 'ALQUILER');
       let tbody = '';
       if (alquileres.length === 0) {
-        tbody = '<tr><td colspan="6" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler. añádelas en la pestaña "operaciones".</td></tr>';
+        tbody = '<tr><td colspan="6" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler.</td></tr>';
       } else {
         alquileres.forEach(op => {
           const linked = state.contracts.find(c => c.opId === op.id) || {};
@@ -435,7 +475,9 @@
           }
         });
       }
-      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">contrato</th><th class="num">importe</th><th></th></tr></thead><tbody>' + tbody + '</tbody>';
+      rentTable.innerHTML = '<thead><tr><th>fecha</th><th>dirección</th><th>tipo</th><th class="num">contrato</th><th class="num">importe</th>'
+        + (state.canWrite ? '<th></th>' : '')
+        + '</tr></thead><tbody>' + tbody + '</tbody>';
     }
   }
 
@@ -452,9 +494,12 @@
       + '<td>' + addr + '</td>'
       + '<td><span class="fb-badge ' + badgeClass + '">' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</span></td>'
       + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
-      + '<td class="num" style="width:80px"><span class="fb-row-actions">'
-      + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
-      + '</span></td></tr>';
+      + (state.canWrite
+          ? '<td class="num" style="width:80px"><span class="fb-row-actions">'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+            + '</span></td>'
+          : '')
+      + '</tr>';
   }
 
   function renderRentRow(op, linked) {
@@ -468,9 +513,12 @@
       + '<td><span class="fb-badge fb-badge-alq">alquiler</span></td>'
       + '<td class="num">' + FB.fmt(contract) + '</td>'
       + '<td class="num">' + FB.fmt(val) + '</td>'
-      + '<td class="num" style="width:80px"><span class="fb-row-actions">'
-      + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
-      + '</span></td></tr>';
+      + (state.canWrite
+          ? '<td class="num" style="width:80px"><span class="fb-row-actions">'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+            + '</span></td>'
+          : '')
+      + '</tr>';
   }
 
   function renderAddressEditRow(op, linked) {
@@ -496,6 +544,12 @@
   function renderConfig() {
     const form = document.getElementById('config-form');
     if (!form) return;
+
+    if (!state.canWrite) {
+      form.innerHTML = '<div class="fb-muted fb-center" style="padding:24px">modo solo lectura: no puedes modificar los objetivos.</div>';
+      return;
+    }
+
     form.innerHTML =
       '<div style="display:flex;flex-direction:column;gap:14px">'
       + '<div class="fb-form-group"><label class="fb-form-label">objetivo pisos vendidos</label><input class="fb-input" type="number" id="cfg-pisos" value="' + state.goals.pisos + '"></div>'
@@ -538,6 +592,7 @@
   const App = {};
 
   App.newOp = function () {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -568,6 +623,7 @@
   };
 
   App.editOp = function (id) {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const op = state.ops.find(o => o.id === id);
     if (op) {
       state.editingOp = JSON.parse(JSON.stringify(op));
@@ -576,6 +632,7 @@
   };
 
   App.delOp = function (id) {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (confirm('¿eliminar esta operación?')) {
       state.ops = state.ops.filter(o => o.id !== id);
       state.contracts = state.contracts.filter(c => c.opId !== id);
@@ -586,6 +643,7 @@
   };
 
   App.saveOp = function (id) {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const typeEl = document.getElementById('op-type-' + id);
     const qtyEl = document.getElementById('op-qty-' + id);
     const honEl = document.getElementById('op-hon-' + id);
@@ -623,6 +681,7 @@
   };
 
   App.editAddress = function (opId) {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     state.editingAddressOpId = opId;
     renderResumen();
   };
@@ -633,6 +692,7 @@
   };
 
   App.saveAddress = function (opId) {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const dateEl = document.getElementById('addr-date-' + opId);
     const addrEl = document.getElementById('addr-addr-' + opId);
     const valEl = document.getElementById('addr-val-' + opId);
@@ -668,6 +728,7 @@
   };
 
   App.saveConfig = function () {
+    if (!state.canWrite) { showToast('modo solo lectura'); return; }
     state.goals.pisos = parseFloat(document.getElementById('cfg-pisos').value) || 0;
     state.goals.locales = parseFloat(document.getElementById('cfg-locales').value) || 0;
     state.goals.alquileres = parseFloat(document.getElementById('cfg-alq').value) || 0;

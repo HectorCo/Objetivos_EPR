@@ -17,8 +17,8 @@
 
     // ⚠️ Lista de correos autorizados a MODIFICAR (debe coincidir con las Reglas de Firestore)
     WRITERS: [
-      'hector.company.hipotecas@gmail.com',   // ← sustituye
-      'hccoordinadora@gmail.com'    // ← sustituye
+      'hector.company.hipotecas@gmail.com',
+      'hccoordinadora@gmail.com'
     ],
 
     DEFAULT_GOALS: {
@@ -188,17 +188,22 @@
       }
       return { pisos, locales, alquileres, total, totalContratos };
     },
+
+    // Cálculo trimestral con nueva lógica:
+    //   falta = objetivo_trimestral − ingresos_escriturados
+    //   pisos = ceil(falta / valor_piso) si falta > 0, si no → 0
     getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
       const meses = this.MONTHS_ESCRITURA;
       const result = [];
       for (let t = 0; t < 4; t++) {
         const sum = meses.slice(t * 3, (t + 1) * 3).reduce((a, m) => a + (escrituraMap[m] || 0), 0);
-        const falta = sum - trimestreGoal;
-        const pisos = pisoValor > 0 ? Math.abs(falta / pisoValor) : 0;
+        const falta = trimestreGoal - sum;
+        const pisos = (falta > 0 && pisoValor > 0) ? Math.ceil(falta / pisoValor) : 0;
         result.push({ trimestre: t + 1, ingresos: sum, falta, pisos });
       }
       return result;
     },
+
     getMonthLabel(idx) {
       return this.MONTHS[idx] + ' ' + (idx < 2 ? 2025 : 2026);
     },

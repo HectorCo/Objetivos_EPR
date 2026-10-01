@@ -1,4 +1,4 @@
-// Fincas Blanco - Datos, constantes, cálculos y almacenamiento (Firebase)
+// Fincas Blanco - Datos, constantes, cálculos y almacenamiento (Firebase + cross-year)
 (function (global) {
   'use strict';
 
@@ -127,49 +127,77 @@
       return `${y}-${m}-${d}`;
     },
 
-    // ---------- Cálculos ----------
+    // ---------- Cálculos base ----------
     calcSinIva(op) {
       const qty = Number(op.qty) || 0;
       const hon = Number(op.honorarios) || 0;
       const pct = Number(op.pct) || 0;
       return qty * hon * pct / 1.21;
     },
-    getPysByMonth(ops, contracts) {
+
+    // Normaliza una op para garantizar que tiene captureYear y escrituraYear
+    normalizeOp(op, captureYear) {
+      const o = Object.assign({}, op);
+      if (o.captureYear == null) o.captureYear = captureYear;
+      if (o.escrituraYear == null) o.escrituraYear = captureYear;
+      return o;
+    },
+
+    // Devuelve el año de captación efectivo de una op
+    getCaptureYear(op, defaultYear) {
+      return op.captureYear != null ? op.captureYear : (defaultYear || 2026);
+    },
+
+    // Devuelve el año de escritura efectivo
+    getEscrituraYear(op, defaultYear) {
+      if (op.escrituraYear != null) return op.escrituraYear;
+      return this.getCaptureYear(op, defaultYear);
+    },
+
+    // ============ CÁLCULOS DEPENDIENTES DEL AÑO ============
+    // PYS: cuenta ops cuya captación cae en `year`, en el índice `op.month`
+    // (op.month es 0..13 = nov_año_anterior .. dic_año_actual)
+    getPysByMonth(ops, year, contracts) {
       const arr = new Array(14).fill(0);
       ops.forEach(op => {
+        const cy = this.getCaptureYear(op, year);
+        if (cy !== year) return;
         if (op.month >= 0 && op.month < 14) arr[op.month] += this.calcSinIva(op);
       });
-      if (Array.isArray(contracts)) {
-        contracts.forEach(c => {
-          const op = ops.find(o => o.id === c.opId);
-          if (op && op.month >= 0 && op.month < 14) {
-            arr[op.month] += Number(c.contract) || 0;
-          }
-        });
-      }
+      // Los contratos no cuentan para PYS (PYS = captación del inmueble vendido/alquilado)
       return arr;
     },
-    getEscrituraByMonth(ops, contracts) {
+
+    // Escritura: cuenta ops cuya escritura cae en `year`, en el mes `op.escritura`
+    getEscrituraByMonth(ops, year, contracts) {
       const map = {};
       this.MONTHS_ESCRITURA.forEach(m => map[m] = 0);
       ops.forEach(op => {
+        const ey = this.getEscrituraYear(op, year);
+        if (ey !== year) return;
         const m = String(op.escritura || '').toLowerCase();
         if (map[m] !== undefined) map[m] += this.calcSinIva(op);
       });
+      // Contratos: solo cuentan si su op vinculada se escritura en `year`
       if (Array.isArray(contracts)) {
         contracts.forEach(c => {
           const op = ops.find(o => o.id === c.opId);
-          if (op) {
-            const m = String(op.escritura || '').toLowerCase();
-            if (map[m] !== undefined) map[m] += Number(c.contract) || 0;
-          }
+          if (!op) return;
+          const ey = this.getEscrituraYear(op, year);
+          if (ey !== year) return;
+          const m = String(op.escritura || '').toLowerCase();
+          if (map[m] !== undefined) map[m] += Number(c.contract) || 0;
         });
       }
       return map;
     },
-    getTotals(ops, contracts) {
+
+    // Totales del año: cuentan ops cuya escritura cae en `year`
+    getTotals(ops, year, contracts) {
       let pisos = 0, locales = 0, alquileres = 0, total = 0, totalContratos = 0;
       ops.forEach(op => {
+        const ey = this.getEscrituraYear(op, year);
+        if (ey !== year) return;
         const v = this.calcSinIva(op);
         if (isNaN(v)) return;
         total += v;
@@ -179,6 +207,10 @@
       });
       if (Array.isArray(contracts)) {
         contracts.forEach(c => {
+          const op = ops.find(o => o.id === c.opId);
+          if (!op) return;
+          const ey = this.getEscrituraYear(op, year);
+          if (ey !== year) return;
           const v = Number(c.contract) || 0;
           if (!isNaN(v)) {
             totalContratos += v;
@@ -189,9 +221,7 @@
       return { pisos, locales, alquileres, total, totalContratos };
     },
 
-    // Cálculo trimestral con nueva lógica:
-    //   falta = objetivo_trimestral − ingresos_escriturados
-    //   pisos = ceil(falta / valor_piso) si falta > 0, si no → 0
+    // Trimestres: sobre el mapa de escritura del año
     getTrimestreData(escrituraMap, trimestreGoal, pisoValor) {
       const meses = this.MONTHS_ESCRITURA;
       const result = [];
@@ -221,7 +251,6 @@
     _getDoc: null,
     _onSnapshot: null,
 
-    // Ruta del documento compartido
     DOC_PATH: ['oficinas', 'fincas-blanco', 'data', 'main'],
 
     initFirestore(user) {
@@ -237,60 +266,61 @@
       return true;
     },
 
-    // ¿Es este usuario escritor autorizado?
     isWriter() {
       if (!this._email) return false;
       return this.WRITERS.map(e => e.toLowerCase()).indexOf(this._email) !== -1;
     },
 
-    loadLocal(year) {
+    // Lee todo el documento (todos los años) desde localStorage
+    loadAllLocal() {
       try {
         const raw = localStorage.getItem(this.STORAGE_KEY);
-        if (!raw) return null;
-        const all = JSON.parse(raw);
-        return all[year] || null;
-      } catch (e) { return null; }
+        if (!raw) return {};
+        return JSON.parse(raw);
+      } catch (e) { return {}; }
     },
 
-    // Cargar desde Firestore (asíncrono)
-    async loadFromCloud(year) {
+    // Devuelve el objeto del año (compatibilidad con código antiguo)
+    loadLocal(year) {
+      const all = this.loadAllLocal();
+      return all[year] || null;
+    },
+
+    // Lee TODO el documento desde Firestore
+    async loadAllFromCloud() {
       if (!this._db) {
-        console.warn('[FB.loadFromCloud] Falta _db');
+        console.warn('[FB.loadAllFromCloud] Falta _db');
         return null;
       }
       try {
         const docRef = this._doc(this._db, ...this.DOC_PATH);
         const snap = await this._getDoc(docRef);
-        // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
         if (snap.exists) {
           const all = snap.data();
-          console.log('[FB.loadFromCloud] Doc encontrado, claves:', Object.keys(all));
+          console.log('[FB.loadAllFromCloud] Doc encontrado, años:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
-          return all[year] || null;
+          return all;
         }
-        console.log('[FB.loadFromCloud] Doc NO existe en Firestore');
+        console.log('[FB.loadAllFromCloud] Doc NO existe');
         return null;
       } catch (e) {
-        console.error('[FB.loadFromCloud] Error:', e);
+        console.error('[FB.loadAllFromCloud] Error:', e);
         return null;
       }
     },
 
-    save(year, data) {
+    // Guarda un año concreto (merge parcial). Solo si es escritor.
+    saveYear(year, data) {
       // 1) Caché local
       try {
-        let all = {};
-        const raw = localStorage.getItem(this.STORAGE_KEY);
-        if (raw) {
-          try { all = JSON.parse(raw); } catch (e) { all = {}; }
-        }
+        const all = this.loadAllLocal();
         all[year] = data;
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
       } catch (e) {}
 
-      // 2) Firestore (solo si es escritor)
+      // 2) Firestore
       if (!this.isWriter()) {
-        console.warn('[FB.save] Usuario sin permisos de escritura, no se sube a Firestore');
+        console.warn('[FB.saveYear] Usuario sin permisos de escritura, no se sube a Firestore');
         return;
       }
       if (this._db) {
@@ -304,7 +334,6 @@
       return this.loadLocal(year);
     },
 
-    // Suscribirse a cambios en la nube
     subscribeToCloud(onChange) {
       if (!this._db) {
         console.warn('[FB.subscribeToCloud] Falta _db');
@@ -312,10 +341,9 @@
       }
       const docRef = this._doc(this._db, ...this.DOC_PATH);
       this._onSnapshot(docRef, (snap) => {
-        // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
         if (snap.exists) {
           const all = snap.data();
-          console.log('[FB.subscribeToCloud] Snapshot recibido, claves:', Object.keys(all));
+          console.log('[FB.subscribeToCloud] Snapshot recibido, años:', Object.keys(all));
           localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
           if (typeof onChange === 'function') onChange(all);
         } else {

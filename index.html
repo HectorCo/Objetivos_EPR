@@ -58,23 +58,26 @@
     <div class="fb-section active" id="tab-dashboard">
       <div class="fb-grid fb-grid-4" id="kpi-cards"></div>
 
-      <!-- NUEVO: inmuebles para alcanzar objetivo -->
+      <!-- inmuebles para alcanzar objetivo -->
       <div class="fb-card fb-mt-md" id="objetivo-restante-card"></div>
 
+      <!-- Gráfico 1: ingresos por escritura (mensual, sin iva) -->
+      <div class="fb-card fb-mt-md">
+        <div class="fb-card-title">ingresos por escritura (mensual, sin iva)</div>
+        <div id="chart-escritura-dashboard" class="fb-chart-container"></div>
+      </div>
+
+      <!-- Gráfico 2: ingresos por pys (mensual) -->
       <div class="fb-card fb-mt-md">
         <div class="fb-card-title">ingresos por pys (mensual)</div>
         <div id="pys-chart" class="fb-chart-container"></div>
       </div>
-      <div class="fb-grid fb-grid-2 fb-mt-md">
-        <div class="fb-card">
-          <div class="fb-card-title">ingresos por escritura (mensual, sin iva)</div>
-          <div id="chart-escritura-dashboard" class="fb-chart-container"></div>
-        </div>
-        <div class="fb-card">
-          <div class="fb-card-title">falta para bono (trimestral)</div>
-          <div class="fb-table-wrap">
-            <table class="fb-table" id="bono-table"></table>
-          </div>
+
+      <!-- Fila inferior: tabla falta para bono -->
+      <div class="fb-card fb-mt-md">
+        <div class="fb-card-title">falta para bono (trimestral)</div>
+        <div class="fb-table-wrap">
+          <table class="fb-table" id="bono-table"></table>
         </div>
       </div>
     </div>

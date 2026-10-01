@@ -63,10 +63,8 @@
       </div>
       <div class="fb-grid fb-grid-2 fb-mt-md">
         <div class="fb-card">
-          <div class="fb-card-title">ingresos por escritura</div>
-          <div class="fb-table-wrap">
-            <table class="fb-table" id="escritura-table"></table>
-          </div>
+          <div class="fb-card-title">ingresos por escritura (mensual, sin iva)</div>
+          <div id="chart-escritura-dashboard" class="fb-chart-container"></div>
         </div>
         <div class="fb-card">
           <div class="fb-card-title">falta para bono (trimestral)</div>
@@ -164,14 +162,14 @@
 
       // ⚠️ SUSTITUYE ESTOS VALORES POR LOS DE TU PROYECTO FIREBASE ⚠️
       var firebaseConfig = {
-  apiKey: "AIzaSyAb2DNxhz3n3y9IP6SqC_Sk4U4PaM9jnbM",
-  authDomain: "objetivosepr.firebaseapp.com",
-  projectId: "objetivosepr",
-  storageBucket: "objetivosepr.firebasestorage.app",
-  messagingSenderId: "1072481587594",
-  appId: "1:1072481587594:web:1c29ece8e8a26227caf873",
-  measurementId: "G-8TKJZHL1W7"
-};
+        apiKey: "AIzaSyAb2DNxhz3n3y9IP6SqC_Sk4U4PaM9jnbM",
+        authDomain: "objetivosepr.firebaseapp.com",
+        projectId: "objetivosepr",
+        storageBucket: "objetivosepr.firebasestorage.app",
+        messagingSenderId: "1072481587594",
+        appId: "1:1072481587594:web:1c29ece8e8a26227caf873",
+        measurementId: "G-8TKJZHL1W7"
+      };
 
       if (!window.firebase) {
         showError('El SDK de Firebase no se cargó. Comprueba tu conexión o bloqueadores de anuncios.');

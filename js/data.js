@@ -29,8 +29,6 @@
       pisoValor: 10550
     },
 
-    // ⚠️ Se han quitado las ops 3, 23 y 27 porque tenían qty: 0 y generaban
-    //    filas fantasma en el Resumen. Eran residuos de datos de prueba antiguos.
     DEFAULT_OPS: [
       {id:1,month:0,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'febrero',pct:0.8},
       {id:2,month:0,type:'VENTA PISO',qty:1,honorarios:19500,escritura:'enero',pct:0.4},
@@ -222,8 +220,16 @@
       return result;
     },
 
-    getMonthLabel(idx) {
-      return this.MONTHS[idx] + ' ' + (idx < 2 ? 2025 : 2026);
+    // ⚠️ CAMBIO IMPORTANTE: getMonthLabel ahora recibe el año actual y
+    // devuelve la etiqueta del mes con el año correcto.
+    // Índices 0-1 → noviembre y diciembre del año ANTERIOR
+    // Índices 2-13 → enero a diciembre del año ACTUAL
+    getMonthLabel(idx, currentYear) {
+      const y = currentYear || new Date().getFullYear();
+      if (idx < 2) {
+        return this.MONTHS[idx] + ' ' + (y - 1);
+      }
+      return this.MONTHS[idx] + ' ' + y;
     },
 
     // ---------- Storage ----------
@@ -322,13 +328,6 @@
       }, (err) => { console.error('[FB.subscribeToCloud] Error:', err); });
     },
 
-    // ---------- RESCATE / LIMPIEZA ----------
-    // Limpia los datos:
-    // - Deduplica contratos por opId
-    // - Elimina contratos huérfanos (opId que no existe)
-    // - Elimina ops con qty: 0 (residuo de datos de prueba)
-    // - NO restaura las ops 3, 23, 27 (ya no están en DEFAULT_OPS)
-    // - Rellena captureYear/escrituraYear faltantes
     cleanupAllYears(rawAll) {
       const result = {};
       const self = this;
@@ -339,35 +338,30 @@
         const opsIn = block.ops || [];
         const contractsIn = block.contracts || [];
 
-        // 1) Ops: normaliza, deduplica por id y elimina las que tienen qty: 0
         const opsSeen = {};
         const opsClean = [];
         opsIn.forEach(raw => {
           const op = self.normalizeOp(raw, y);
           if (opsSeen[op.id]) return;
-          // ⚠️ NUEVO: descartar ops con qty: 0
           if (Number(op.qty) === 0) return;
           opsSeen[op.id] = true;
           opsClean.push(op);
         });
 
-        // 2) Rellenar ops por defecto que falten (solo año 2026)
-        //    Pero solo si no estaban en DEFAULT_OPS eliminadas por qty: 0
         if (y === 2026) {
           self.DEFAULT_OPS.forEach(dop => {
-            if (Number(dop.qty) === 0) return; // no restaurar ops con qty 0
+            if (Number(dop.qty) === 0) return;
             if (!opsSeen[dop.id]) {
               opsClean.push(self.normalizeOp(dop, y));
             }
           });
         }
 
-        // 3) Contratos: deduplicar por opId y descartar los huérfanos
         const contractsSeen = {};
         const contractsClean = [];
         contractsIn.forEach(c => {
           const op = opsClean.find(o => o.id === c.opId);
-          if (!op) return; // contrato huérfano (la op ya no existe)
+          if (!op) return;
           const key = String(c.opId);
           if (contractsSeen[key]) return;
           contractsSeen[key] = true;
@@ -401,7 +395,6 @@
       return result;
     },
 
-    // ---------- Export / Import ----------
     exportJSON() {
       const raw = localStorage.getItem(this.STORAGE_KEY);
       if (!raw) { alert('No hay datos para exportar todavía'); return; }

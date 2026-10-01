@@ -1,7 +1,7 @@
 {
-  "name": "Objetivos Fincas Blanco Enric Prat de la Riba 2026",
-  "short_name": "Objetivos FBR 2026",
-  "description": "Control de ingresos, operaciones y objetivos - Enric Prat de la Riba 2026",
+  "name": "Objetivos Fincas Blanco Enric Prat de la Riba",
+  "short_name": "Objetivos FBR",
+  "description": "Control de ingresos, operaciones y objetivos - Enric Prat de la Riba",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

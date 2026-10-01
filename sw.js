@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fincas-blanco-v8';
+const CACHE_NAME = 'fincas-blanco-v9';
 const ASSETS = [
   './',
   './index.html',
@@ -33,6 +33,11 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
+  // No interceptar llamadas a Firebase/Google (dejar pasar siempre)
+  const url = e.request.url;
+  if (url.includes('googleapis.com') || url.includes('gstatic.com') || url.includes('firebase')) {
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((response) => {
       if (response) return response;

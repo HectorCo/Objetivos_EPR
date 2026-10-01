@@ -4,18 +4,33 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="theme-color" content="#111111">
-  <meta name="description" content="Objetivos Fincas Blanco Enric Prat de la Riba 2026">
-  <title>Objetivos Fincas Blanco Enric Prat de la Riba 2026</title>
+  <meta name="description" content="Objetivos Fincas Blanco Enric Prat de la Riba">
+  <title>Objetivos Fincas Blanco Enric Prat de la Riba</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <div class="fb-app">
+  <!-- Pantalla de login (se oculta tras autenticarse) -->
+  <div id="fb-auth-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;z-index:9999;">
+    <div style="max-width:360px;padding:32px;text-align:center;">
+      <div style="font-size:22px;font-weight:500;letter-spacing:-0.3px;margin-bottom:8px;">objetivos fincas blanco</div>
+      <div style="font-size:14px;color:#666;margin-bottom:24px;">Enric Prat de la Riba</div>
+      <div id="fb-auth-status" style="font-size:13px;color:#666;margin-bottom:16px;">Cargando…</div>
+      <button id="fb-auth-btn" class="fb-btn fb-btn-primary" style="padding:10px 20px;font-size:14px;display:none;">
+        <svg width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-4px;margin-right:6px;">
+          <path fill="#fff" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81z"/>
+        </svg>
+        iniciar sesión con Google
+      </button>
+    </div>
+  </div>
+
+  <div class="fb-app" id="fb-main" style="display:none;">
     <!-- Header -->
     <div class="fb-header">
       <div>
-        <div class="fb-logo">Objetivos Fincas Blanco Enric Prat de la Riba 2026</div>
+        <div class="fb-logo">Objetivos Fincas Blanco Enric Prat de la Riba</div>
         <div class="fb-date" id="current-date"></div>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -25,6 +40,9 @@
         </button>
         <button class="fb-btn fb-btn-icon" id="btn-import" title="importar backup">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </button>
+        <button class="fb-btn fb-btn-icon" id="btn-logout" title="cerrar sesión">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
         </button>
         <input type="file" id="import-file" accept=".json" style="display:none">
       </div>
@@ -130,7 +148,39 @@
   <!-- Toast -->
   <div class="fb-toast" id="fb-toast"></div>
 
-  <!-- Scripts -->
+  <!-- Firebase SDK (módulos) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    // ⚠️ SUSTITUYE ESTOS VALORES POR LOS DE TU PROYECTO FIREBASE ⚠️
+    const firebaseConfig = {
+      apiKey: "AIzaSy...AQUI_TU_API_KEY",
+      authDomain: "objetivos-fincas-blanco.firebaseapp.com",
+      projectId: "objetivos-fincas-blanco",
+      storageBucket: "objetivos-fincas-blanco.firebasestorage.app",
+      messagingSenderId: "000000000000",
+      appId: "1:000000000000:web:0000000000000000000000"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    // Exponer a los scripts clásicos (data.js, charts.js, app.js)
+    window.FB_FIREBASE = {
+      app, db, auth, provider,
+      signInWithPopup, onAuthStateChanged, signOut,
+      doc, getDoc, setDoc, onSnapshot
+    };
+
+    // Notificar a los scripts clásicos que Firebase está listo
+    window.dispatchEvent(new Event('firebase-ready'));
+  </script>
+
+  <!-- Scripts clásicos -->
   <script src="js/data.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>

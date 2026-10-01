@@ -15,6 +15,12 @@
       'TASACIÓN': 'tasación'
     },
 
+    // ⚠️ Lista de correos autorizados a MODIFICAR (debe coincidir con las Reglas de Firestore)
+    WRITERS: [
+      'CORREO_1@gmail.com',   // ← sustituye
+      'CORREO_2@gmail.com'    // ← sustituye
+    ],
+
     DEFAULT_GOALS: {
       pisos: 22,
       locales: 2,
@@ -203,22 +209,33 @@
     STORAGE_KEY: 'fincas_blanco_data_v3',
 
     _uid: null,
+    _email: null,
     _db: null,
     _doc: null,
     _setDoc: null,
     _getDoc: null,
     _onSnapshot: null,
 
-    initFirestore(uid) {
+    // Ruta del documento compartido
+    DOC_PATH: ['oficinas', 'fincas-blanco', 'data', 'main'],
+
+    initFirestore(user) {
       const F = global.FB_FIREBASE;
       if (!F) { console.warn('Firebase no está listo'); return false; }
-      this._uid = uid;
+      this._uid = user.uid;
+      this._email = (user.email || '').toLowerCase();
       this._db = F.db;
       this._doc = F.doc;
       this._setDoc = F.setDoc;
       this._getDoc = F.getDoc;
       this._onSnapshot = F.onSnapshot;
       return true;
+    },
+
+    // ¿Es este usuario escritor autorizado?
+    isWriter() {
+      if (!this._email) return false;
+      return this.WRITERS.map(e => e.toLowerCase()).indexOf(this._email) !== -1;
     },
 
     loadLocal(year) {
@@ -232,12 +249,12 @@
 
     // Cargar desde Firestore (asíncrono)
     async loadFromCloud(year) {
-      if (!this._db || !this._uid) {
-        console.warn('[FB.loadFromCloud] Falta _db o _uid');
+      if (!this._db) {
+        console.warn('[FB.loadFromCloud] Falta _db');
         return null;
       }
       try {
-        const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+        const docRef = this._doc(this._db, ...this.DOC_PATH);
         const snap = await this._getDoc(docRef);
         // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
         if (snap.exists) {
@@ -266,9 +283,13 @@
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
       } catch (e) {}
 
-      // 2) Firestore
-      if (this._db && this._uid) {
-        const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+      // 2) Firestore (solo si es escritor)
+      if (!this.isWriter()) {
+        console.warn('[FB.save] Usuario sin permisos de escritura, no se sube a Firestore');
+        return;
+      }
+      if (this._db) {
+        const docRef = this._doc(this._db, ...this.DOC_PATH);
         this._setDoc(docRef, { [year]: data }, { merge: true })
           .catch((err) => console.error('Error guardando en Firestore:', err));
       }
@@ -280,11 +301,11 @@
 
     // Suscribirse a cambios en la nube
     subscribeToCloud(onChange) {
-      if (!this._db || !this._uid) {
-        console.warn('[FB.subscribeToCloud] Falta _db o _uid');
+      if (!this._db) {
+        console.warn('[FB.subscribeToCloud] Falta _db');
         return;
       }
-      const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+      const docRef = this._doc(this._db, ...this.DOC_PATH);
       this._onSnapshot(docRef, (snap) => {
         // ⚠️ API COMPAT: snap.exists es PROPIEDAD, no función
         if (snap.exists) {

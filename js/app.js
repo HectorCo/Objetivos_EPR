@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v18 - contratos robustos)
+// Fincas Blanco - Aplicación principal (v19 - fix contratos año)
 (function () {
   'use strict';
 
@@ -41,29 +41,24 @@
     return result;
   }
 
-  // ⚠️ FIX: ahora solo devuelve los contratos cuyas ops son visibles en el año actual.
-  // Es decir: contratos cuya op esté en state.ops (ya filtrado por año).
-  // Además, deduplica por opId (queda con el primero).
+  // ⚠️ FIX v19: solo leemos contratos DEL AÑO ACTUAL, no de otros años.
+  // Esto evita que un residuo con el mismo opId en otro año "gane" al correcto.
   function collectContractsForYear(year, ops) {
-    const seen = {};
     const result = [];
     const visibleOpIds = {};
     (ops || state.ops || []).forEach(op => {
       visibleOpIds[op.id] = true;
     });
 
-    const all = state.allYears || {};
-    Object.keys(all).forEach(yStr => {
-      const block = all[yStr] || {};
-      const contracts = block.contracts || [];
-      contracts.forEach(c => {
-        if (c.opId == null) return;           // sin op → huérfano, se ignora
-        if (!visibleOpIds[c.opId]) return;    // op no visible en este año → se ignora
-        const key = String(c.opId);
-        if (seen[key]) return;                // deduplicado
-        seen[key] = true;
-        result.push(Object.assign({}, c));
-      });
+    const block = state.allYears[year] || {};
+    const contracts = block.contracts || [];
+    const seen = {};
+    contracts.forEach(c => {
+      if (c.opId == null) return;
+      if (!visibleOpIds[c.opId]) return;
+      if (seen[c.opId]) return;
+      seen[c.opId] = true;
+      result.push(Object.assign({}, c));
     });
     return result;
   }
@@ -392,7 +387,6 @@
         + '</div>';
     }
 
-    // KPI: inmuebles para alcanzar objetivo
     const objetivoCard = document.getElementById('objetivo-restante-card');
     if (objetivoCard) {
       const faltaIngresos = state.goals.ingresos - t.total;
@@ -801,7 +795,6 @@
     const block = state.allYears[fromYear];
     if (block) {
       block.ops = block.ops.filter(o => o.id !== id);
-      // Eliminar también el contrato vinculado de cualquier año (por si acaso)
       Object.keys(state.allYears).forEach(yStr => {
         const yb = state.allYears[yStr];
         if (!yb || !yb.contracts) return;
@@ -890,8 +883,6 @@
     renderResumen();
   };
 
-  // ⚠️ FIX ROBUSTO: guarda el contrato en el año de captación de su op
-  // y elimina cualquier copia duplicada en otros años.
   App.saveAddress = function (opId) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const dateEl = document.getElementById('addr-date-' + opId);
@@ -917,20 +908,17 @@
       entry.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
     }
 
-    // Eliminar cualquier contrato del mismo opId en TODOS los años
     Object.keys(state.allYears).forEach(yStr => {
       const yb = state.allYears[yStr];
       if (!yb || !yb.contracts) return;
       yb.contracts = yb.contracts.filter(c => c.opId !== opId);
     });
 
-    // Insertar en el año de captación
     if (!state.allYears[fromYear]) {
       state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
     }
     state.allYears[fromYear].contracts.push(entry);
 
-    // Subir TODOS los años que hayan podido cambiar (por la eliminación)
     Object.keys(state.allYears).forEach(yStr => {
       FB.saveYear(parseInt(yStr, 10), state.allYears[yStr]);
     });
@@ -972,7 +960,6 @@
     showToast('✅ datos reparados');
   };
 
-  // ⚠️ NUEVO: reparar contratos duplicados
   App.repairContracts = function () {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (!confirm('🔧 Esto va a:\n\n1. Deduplicar contratos por opId\n2. Asignar cada contrato al año de su operación\n3. Eliminar contratos huérfanos\n\n¿Continuar?')) return;
@@ -980,7 +967,6 @@
     const repaired = FB.repairContracts(state.allYears);
     state.allYears = repaired;
 
-    // Subir todos los años afectados
     Object.keys(repaired).forEach(yStr => {
       FB.saveYear(parseInt(yStr, 10), repaired[yStr]);
     });

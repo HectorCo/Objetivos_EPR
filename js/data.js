@@ -29,10 +29,11 @@
       pisoValor: 10550
     },
 
+    // ⚠️ Se han quitado las ops 3, 23 y 27 porque tenían qty: 0 y generaban
+    //    filas fantasma en el Resumen. Eran residuos de datos de prueba antiguos.
     DEFAULT_OPS: [
       {id:1,month:0,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'febrero',pct:0.8},
       {id:2,month:0,type:'VENTA PISO',qty:1,honorarios:19500,escritura:'enero',pct:0.4},
-      {id:3,month:0,type:'VENTA PISO',qty:0,honorarios:10000,escritura:'enero',pct:0.8},
       {id:4,month:0,type:'VENTA PISO',qty:1,honorarios:12000,escritura:'febrero',pct:1.0},
       {id:5,month:0,type:'VENTA PISO',qty:1,honorarios:12000,escritura:'marzo',pct:0.8},
       {id:6,month:0,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'enero',pct:0.8},
@@ -52,11 +53,9 @@
       {id:20,month:5,type:'VENTA LOCAL',qty:1,honorarios:30000,escritura:'septiembre',pct:1.0},
       {id:21,month:6,type:'ALQUILER',qty:1,honorarios:985.77,escritura:'mayo',pct:1.0},
       {id:22,month:6,type:'ALQUILER',qty:1,honorarios:1480.57,escritura:'mayo',pct:1.0},
-      {id:23,month:6,type:'VENTA PISO',qty:0,honorarios:22000,escritura:'septiembre',pct:0.2},
       {id:24,month:6,type:'ALQUILER',qty:1,honorarios:1270.5,escritura:'mayo',pct:1.0},
       {id:25,month:7,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'septiembre',pct:1.0},
       {id:26,month:7,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'julio',pct:1.0},
-      {id:27,month:7,type:'VENTA PISO',qty:0,honorarios:10000,escritura:'septiembre',pct:0.4},
       {id:28,month:7,type:'VENTA PISO',qty:1,honorarios:5000,escritura:'septiembre',pct:0.4},
       {id:29,month:7,type:'VENTA PISO',qty:1,honorarios:10000,escritura:'octubre',pct:1.0},
       {id:30,month:8,type:'VENTA LOCAL',qty:1,honorarios:5500,escritura:'julio',pct:1.0}
@@ -324,11 +323,12 @@
     },
 
     // ---------- RESCATE / LIMPIEZA ----------
-    // Devuelve una versión "limpia" de los datos:
-    // - Deduplica contratos por opId (mantiene el primero)
-    // - Elimina contratos cuyo opId no exista en el mismo año
-    // - Rellena campos captureYear/escrituraYear faltantes
-    // - Reañade las ops DEFAULT que falten (id 3, 23, 27)
+    // Limpia los datos:
+    // - Deduplica contratos por opId
+    // - Elimina contratos huérfanos (opId que no existe)
+    // - Elimina ops con qty: 0 (residuo de datos de prueba)
+    // - NO restaura las ops 3, 23, 27 (ya no están en DEFAULT_OPS)
+    // - Rellena captureYear/escrituraYear faltantes
     cleanupAllYears(rawAll) {
       const result = {};
       const self = this;
@@ -339,38 +339,36 @@
         const opsIn = block.ops || [];
         const contractsIn = block.contracts || [];
 
-        // 1) Ops: normaliza y deduplica por id
+        // 1) Ops: normaliza, deduplica por id y elimina las que tienen qty: 0
         const opsSeen = {};
         const opsClean = [];
         opsIn.forEach(raw => {
           const op = self.normalizeOp(raw, y);
           if (opsSeen[op.id]) return;
+          // ⚠️ NUEVO: descartar ops con qty: 0
+          if (Number(op.qty) === 0) return;
           opsSeen[op.id] = true;
           opsClean.push(op);
         });
 
         // 2) Rellenar ops por defecto que falten (solo año 2026)
+        //    Pero solo si no estaban en DEFAULT_OPS eliminadas por qty: 0
         if (y === 2026) {
           self.DEFAULT_OPS.forEach(dop => {
+            if (Number(dop.qty) === 0) return; // no restaurar ops con qty 0
             if (!opsSeen[dop.id]) {
               opsClean.push(self.normalizeOp(dop, y));
             }
           });
         }
 
-        // 3) Contratos: deduplicar por (opId, date, addr) y descartar los que
-        //    no tengan op asociada en ESTE año. Los contratos de años futuros
-        //    que apunten a ops de años anteriores NO se mantienen aquí:
-        //    la app los recalcula al vuelo por año de captación de la op vinculada.
+        // 3) Contratos: deduplicar por opId y descartar los huérfanos
         const contractsSeen = {};
         const contractsClean = [];
         contractsIn.forEach(c => {
-          // Descartar si opId no existe en las ops de este año
           const op = opsClean.find(o => o.id === c.opId);
-          if (!op) return;
-
-          // Deduplicar por opId + date + addr
-          const key = String(c.opId) + '|' + String(c.date || '') + '|' + String(c.addr || '');
+          if (!op) return; // contrato huérfano (la op ya no existe)
+          const key = String(c.opId);
           if (contractsSeen[key]) return;
           contractsSeen[key] = true;
 
@@ -391,7 +389,6 @@
         };
       });
 
-      // Asegurar que 2026 existe
       if (!result[2026]) {
         result[2026] = {
           ops: self.DEFAULT_OPS.map(o => self.normalizeOp(o, 2026)),

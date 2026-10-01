@@ -11,16 +11,13 @@
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <!-- Pantalla de login (se oculta tras autenticarse) -->
+  <!-- Pantalla de login -->
   <div id="fb-auth-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;z-index:9999;">
     <div style="max-width:360px;padding:32px;text-align:center;">
       <div style="font-size:22px;font-weight:500;letter-spacing:-0.3px;margin-bottom:8px;">objetivos fincas blanco</div>
       <div style="font-size:14px;color:#666;margin-bottom:24px;">Enric Prat de la Riba</div>
       <div id="fb-auth-status" style="font-size:13px;color:#666;margin-bottom:16px;">Cargando…</div>
       <button id="fb-auth-btn" class="fb-btn fb-btn-primary" style="padding:10px 20px;font-size:14px;display:none;">
-        <svg width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-4px;margin-right:6px;">
-          <path fill="#fff" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27c3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10c5.35 0 9.25-3.67 9.25-9.09c0-1.15-.15-1.81-.15-1.81z"/>
-        </svg>
         iniciar sesión con Google
       </button>
     </div>
@@ -148,40 +145,75 @@
   <!-- Toast -->
   <div class="fb-toast" id="fb-toast"></div>
 
-  <!-- Firebase SDK (módulos) -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-    import { getFirestore, doc, getDoc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  <!-- Firebase SDK (versión COMPAT — funciona con <script> clásico, sin módulos) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 
-    // ⚠️ SUSTITUYE ESTOS VALORES POR LOS DE TU PROYECTO FIREBASE ⚠️
-    const firebaseConfig = {
-      apiKey: "AIzaSyAb2DNxhz3n3y9IP6SqC_Sk4U4PaM9jnbM",
-      authDomain: "objetivosepr.firebaseapp.com",
-      projectId: "objetivosepr",
-      storageBucket: "objetivosepr.firebasestorage.app",
-      messagingSenderId: "1072481587594",
-      appId: "1:1072481587594:web:1c29ece8e8a26227caf873",
-      measurementId: "G-8TKJZHL1W7"
-    };
+  <!-- Configuración e inicialización -->
+  <script>
+    (function () {
+      var status = document.getElementById('fb-auth-status');
+      var btn = document.getElementById('fb-auth-btn');
 
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const auth = getAuth(app);
-    const provider = new GoogleAuthProvider();
+      function showError(msg) {
+        if (status) { status.style.display = 'block'; status.textContent = '⚠️ ' + msg; }
+        if (btn) btn.style.display = 'none';
+        console.error('[Fincas Blanco]', msg);
+      }
 
-    // Exponer a los scripts clásicos (data.js, charts.js, app.js)
-    window.FB_FIREBASE = {
-      app, db, auth, provider,
-      signInWithPopup, onAuthStateChanged, signOut,
-      doc, getDoc, setDoc, onSnapshot
-    };
+      // ⚠️ SUSTITUYE ESTOS VALORES POR LOS DE TU PROYECTO FIREBASE ⚠️
+      var firebaseConfig = {
+        apiKey: "AIzaSy...AQUI_TU_API_KEY",
+        authDomain: "objetivos-fincas-blanco.firebaseapp.com",
+        projectId: "objetivos-fincas-blanco",
+        storageBucket: "objetivos-fincas-blanco.firebasestorage.app",
+        messagingSenderId: "000000000000",
+        appId: "1:000000000000:web:0000000000000000000000"
+      };
 
-    // Notificar a los scripts clásicos que Firebase está listo
-    window.dispatchEvent(new Event('firebase-ready'));
+      if (!window.firebase) {
+        showError('El SDK de Firebase no se cargó. Comprueba tu conexión o bloqueadores de anuncios.');
+        return;
+      }
+
+      if (firebaseConfig.apiKey.indexOf('AQUI_TU') !== -1) {
+        showError('Falta configurar firebaseConfig. Abre index.html y pon tus credenciales de Firebase.');
+        return;
+      }
+
+      try {
+        firebase.initializeApp(firebaseConfig);
+        var db = firebase.firestore();
+        var auth = firebase.auth();
+        var provider = new firebase.auth.GoogleAuthProvider();
+
+        window.FB_FIREBASE = {
+          app: firebase.app(),
+          db: db,
+          auth: auth,
+          provider: provider,
+          signInWithPopup: function (a, p) { return a.signInWithPopup(p); },
+          onAuthStateChanged: function (a, cb) { return a.onAuthStateChanged(cb); },
+          signOut: function (a) { return a.signOut(); },
+          doc: function (d, c, docId, sub, subId) {
+            // Compat: usamos rutas por string
+            return d.collection(c).doc(docId).collection(sub).doc(subId);
+          },
+          getDoc: function (ref) { return ref.get(); },
+          setDoc: function (ref, data, opts) { return ref.set(data, opts); },
+          onSnapshot: function (ref, cb) { return ref.onSnapshot(cb); }
+        };
+
+        if (status) status.textContent = 'Firebase listo. Comprobando sesión…';
+        window.dispatchEvent(new Event('firebase-ready'));
+      } catch (err) {
+        showError('Error inicializando Firebase: ' + (err && err.message ? err.message : err));
+      }
+    })();
   </script>
 
-  <!-- Scripts clásicos -->
+  <!-- Scripts de la app -->
   <script src="js/data.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>

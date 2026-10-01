@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v6 - ingresos unificados)
+// Fincas Blanco - Aplicación principal (v7 - Firebase)
 (function () {
   'use strict';
 
@@ -11,7 +11,8 @@
     editingOp: null,
     editingAddressOpId: null,
     nextId: 1,
-    activeTab: 'dashboard'
+    activeTab: 'dashboard',
+    user: null
   };
 
   // ===== PERSISTENCIA =====
@@ -35,7 +36,7 @@
 
   function loadYear(year) {
     state.year = year;
-    const data = FB.load(year);
+    const data = FB.loadLocal(year);
     if (data) {
       state.ops = data.ops || [];
       state.contracts = data.contracts || [];
@@ -56,9 +57,86 @@
     });
   }
 
+  // ===== AUTENTICACIÓN =====
+  function initAuth() {
+    const F = window.FB_FIREBASE;
+    if (!F) {
+      console.error('Firebase no está disponible');
+      document.getElementById('fb-auth-status').textContent = 'Error: Firebase no cargó.';
+      return;
+    }
+
+    const { auth, onAuthStateChanged, signInWithPopup, provider, signOut } = F;
+
+    // Configurar el botón de login
+    const btn = document.getElementById('fb-auth-btn');
+    const status = document.getElementById('fb-auth-status');
+    btn.style.display = 'inline-flex';
+    status.style.display = 'none';
+
+    btn.addEventListener('click', () => {
+      status.style.display = 'block';
+      status.textContent = 'Iniciando sesión…';
+      btn.style.display = 'none';
+      signInWithPopup(auth, provider).catch((err) => {
+        console.error('Error al iniciar sesión:', err);
+        status.textContent = 'Error: ' + (err.message || 'no se pudo iniciar sesión');
+        btn.style.display = 'inline-flex';
+      });
+    });
+
+    // Reaccionar a cambios de sesión
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        state.user = user;
+        FB.initFirestore(user.uid);
+        showApp();
+        // Si localStorage está vacío, intentar cargar de Firestore
+        const local = FB.loadLocal(state.year);
+        if (!local) {
+          FB.loadFromCloud(state.year).then((cloudData) => {
+            if (cloudData) {
+              loadYear(state.year);
+              renderAll();
+            }
+          });
+        }
+        // Suscribirse a cambios de la nube (por si se edita desde otro dispositivo)
+        FB.subscribeToCloud((all) => {
+          // Recargar el año actual si cambia desde la nube
+          if (all[state.year]) {
+            loadYear(state.year);
+            renderAll();
+          }
+        });
+        init();
+      } else {
+        state.user = null;
+        showLogin();
+      }
+    });
+
+    // Botón de logout
+    const btnLogout = document.getElementById('btn-logout');
+    if (btnLogout) {
+      btnLogout.addEventListener('click', () => {
+        signOut(auth).then(() => location.reload());
+      });
+    }
+  }
+
+  function showLogin() {
+    document.getElementById('fb-auth-screen').style.display = 'flex';
+    document.getElementById('fb-main').style.display = 'none';
+  }
+
+  function showApp() {
+    document.getElementById('fb-auth-screen').style.display = 'none';
+    document.getElementById('fb-main').style.display = 'block';
+  }
+
   // ===== INICIALIZACIÓN =====
   function init() {
-    loadYear(2026);
     bindEvents();
     updateYearDisplay();
     renderDashboard();
@@ -92,8 +170,9 @@
       FB.importJSON(file, (err) => {
         if (err) { showToast('error al importar'); return; }
         loadYear(state.year);
+        saveState(); // reenvía a Firestore
         renderAll();
-        showToast('backup importado');
+        showToast('backup importado y subido a la nube');
       });
       e.target.value = '';
     });
@@ -103,7 +182,6 @@
       if (e.target.id === 'modal-overlay') closeModal();
     });
 
-    // Re-renderizar gráficos al cambiar tamaño de ventana
     let _resizeTimer = null;
     window.addEventListener('resize', () => {
       if (state.activeTab !== 'graficos' && state.activeTab !== 'dashboard') return;
@@ -119,7 +197,6 @@
     state.activeTab = tabName;
     document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
     document.querySelectorAll('.fb-section').forEach(s => s.classList.toggle('active', s.id === 'tab-' + tabName));
-    // Doble rAF para asegurar que la sección tiene ancho real antes de dibujar
     requestAnimationFrame(() => requestAnimationFrame(() => {
       if (tabName === 'dashboard') renderDashboard();
       if (tabName === 'graficos') renderGraficos();
@@ -545,7 +622,6 @@
     renderOperaciones();
   };
 
-  // ===== DIRECCIONES (vinculadas a operaciones) =====
   App.editAddress = function (opId) {
     state.editingAddressOpId = opId;
     renderResumen();
@@ -591,7 +667,6 @@
     showToast('dirección guardada');
   };
 
-  // ===== CONFIG =====
   App.saveConfig = function () {
     state.goals.pisos = parseFloat(document.getElementById('cfg-pisos').value) || 0;
     state.goals.locales = parseFloat(document.getElementById('cfg-locales').value) || 0;
@@ -604,7 +679,6 @@
     showToast('objetivos guardados');
   };
 
-  // ===== EXPORTAR CSV =====
   App.exportExcel = function () {
     const t = FB.getTotals(state.ops, state.contracts);
     const esc = FB.getEscrituraByMonth(state.ops, state.contracts);
@@ -664,7 +738,6 @@
     showToast('archivo csv exportado');
   };
 
-  // ===== MODAL AÑO =====
   function showYearModal() {
     const overlay = document.getElementById('modal-overlay');
     const content = document.getElementById('modal-content');
@@ -696,7 +769,6 @@
     if (overlay) overlay.classList.remove('show');
   }
 
-  // ===== TOAST =====
   function showToast(msg) {
     const toast = document.getElementById('fb-toast');
     if (!toast) return;
@@ -708,10 +780,18 @@
 
   window.App = App;
 
-  // ===== INIT =====
+  // ===== ARRANQUE =====
+  function boot() {
+    if (window.FB_FIREBASE) {
+      initAuth();
+    } else {
+      window.addEventListener('firebase-ready', initAuth, { once: true });
+    }
+  }
+
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', boot);
   } else {
-    init();
+    boot();
   }
 })();

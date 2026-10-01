@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fincas-blanco-v17';
+const CACHE_NAME = 'fincas-blanco-v18';
 const ASSETS = [
   './',
   './index.html',

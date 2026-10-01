@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v16 - nomenclatura PYS)
+// Fincas Blanco - Aplicación principal (v17 - fix mes pys año)
 (function () {
   'use strict';
 
@@ -87,7 +87,6 @@
     state.nextId = block.nextId || 1;
   }
 
-  // ===== saveState() quirúrgico =====
   function saveState() {
     if (!state.canWrite) {
       showToast('modo solo lectura: no puedes guardar cambios');
@@ -445,7 +444,7 @@
       const isEditingNew = state.editingOp && state.editingOp.id === 0 && state.editingOp.month === m;
       if (ops.length === 0 && !isEditingNew) continue;
 
-      html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m) + '</div>';
+      html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m, state.year) + '</div>';
       html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>'
             + '<th>mes pys</th>'
             + '<th>tipo</th><th class="center">cant</th><th class="num">honorarios</th>'
@@ -519,8 +518,9 @@
     const typeOpts = FB.TYPES.map(t => '<option value="' + t + '"' + (op.type === t ? ' selected' : '') + '>' + FB.TYPE_LABELS[t] + '</option>').join('');
     const escOpts = FB.MONTHS_ESCRITURA.map(m => '<option value="' + m + '"' + (op.escritura === m ? ' selected' : '') + '>' + m + '</option>').join('');
 
+    // ⚠️ CAMBIO: pasar state.year a getMonthLabel para que use el año actual
     const monthOpts = FB.MONTHS.map((m, idx) => {
-      const label = FB.getMonthLabel(idx);
+      const label = FB.getMonthLabel(idx, state.year);
       return '<option value="' + idx + '"' + (op.month === idx ? ' selected' : '') + '>' + label + '</option>';
     }).join('');
 
@@ -984,7 +984,7 @@
     lines.push('Mes,Año escr.,Tipo,Cantidad,Honorarios,Escritura,%,Sin IVA');
     state.ops.forEach(op => {
       lines.push([
-        FB.getMonthLabel(op.month),
+        FB.getMonthLabel(op.month, state.year),
         FB.getEscrituraYear(op, state.year),
         op.type,
         op.qty,

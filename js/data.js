@@ -265,4 +265,58 @@
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
       } catch (e) { /* quota exceeded, ignoramos */ }
 
-      // 2) Firestore (
+      // 2) Firestore (asíncrono)
+      if (this._db && this._uid) {
+        const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+        this._setDoc(docRef, { [year]: data }, { merge: true })
+          .catch((err) => console.error('Error guardando en Firestore:', err));
+      }
+    },
+
+    // Leer de la caché local (compatibilidad con la firma antigua)
+    load(year) {
+      return this.loadLocal(year);
+    },
+
+    // Suscribirse a cambios en la nube (opcional, para multi-dispositivo)
+    subscribeToCloud(onChange) {
+      if (!this._db || !this._uid) return;
+      const docRef = this._doc(this._db, 'users', this._uid, 'data', 'main');
+      this._onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          const all = snap.data();
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(all));
+          if (typeof onChange === 'function') onChange(all);
+        }
+      });
+    },
+
+    // ---------- Export / Import ----------
+    exportJSON() {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      if (!raw) { alert('No hay datos para exportar todavía'); return; }
+      const blob = new Blob([raw], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'fincas_blanco_backup_' + new Date().toISOString().slice(0, 10) + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    importJSON(file, callback) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = JSON.parse(e.target.result);
+          localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+          callback(null, data);
+        } catch (err) { callback(err); }
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  global.FB = FB;
+})(window);

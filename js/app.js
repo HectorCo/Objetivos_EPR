@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v13 - fix ops fantasma)
+// Fincas Blanco - Aplicación principal (v14 - KPI inmuebles para objetivo)
 (function () {
   'use strict';
 
@@ -383,6 +383,36 @@
         + '</div>';
     }
 
+    // ===== NUEVO KPI: inmuebles para alcanzar objetivo =====
+    const objetivoCard = document.getElementById('objetivo-restante-card');
+    if (objetivoCard) {
+      const faltaIngresos = state.goals.ingresos - t.total;
+      const pisoValor = state.goals.pisoValor || 0;
+      const pisosRestantes = (faltaIngresos > 0 && pisoValor > 0)
+        ? Math.ceil(faltaIngresos / pisoValor)
+        : 0;
+
+      const objetivoAlcanzado = faltaIngresos <= 0;
+      const colorNumero = objetivoAlcanzado ? 'var(--kimi-color-positive, #16a34a)' : 'var(--kimi-color-text-primary, #111)';
+
+      objetivoCard.innerHTML =
+        '<div class="fb-card-title">inmuebles para alcanzar objetivo</div>'
+        + '<div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-top:8px;">'
+        + '  <div style="font-size:42px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;color:' + colorNumero + ';">'
+        +     (objetivoAlcanzado ? '🎉' : pisosRestantes)
+        + '  </div>'
+        + '  <div class="fb-small fb-muted" style="line-height:1.4;">'
+        +     (objetivoAlcanzado
+                 ? 'objetivo alcanzado · superado en ' + FB.fmt(-faltaIngresos)
+                 : 'faltan ' + FB.fmt(faltaIngresos) + ' por escriturar')
+        + '  </div>'
+        + '</div>'
+        + '<div class="fb-xs fb-muted" style="margin-top:8px;font-variant-numeric:tabular-nums;">'
+        +   'cálculo: (' + FB.fmt(state.goals.ingresos) + ' − ' + FB.fmt(t.total) + ') ÷ ' + FB.fmt(pisoValor)
+        +   (objetivoAlcanzado ? ' = 0 inmuebles' : ' = ' + pisosRestantes + ' inmuebles')
+        + '</div>';
+    }
+
     FBCharts.renderBarChart('pys-chart', pys, FB.MONTHS_SHORT);
 
     const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
@@ -540,7 +570,6 @@
 
     const soldTable = document.getElementById('dir-vendidas');
     if (soldTable) {
-      // ⚠️ NUEVO: filtrar qty > 0 para excluir ops fantasma
       const ventas = state.ops.filter(o =>
         (o.type === 'VENTA PISO' || o.type === 'VENTA LOCAL' || o.type === 'VENTA PARKING')
         && Number(o.qty) > 0
@@ -566,7 +595,6 @@
 
     const rentTable = document.getElementById('dir-alquiladas');
     if (rentTable) {
-      // ⚠️ NUEVO: filtrar qty > 0
       const alquileres = state.ops.filter(o => o.type === 'ALQUILER' && Number(o.qty) > 0);
       let tbody = '';
       if (alquileres.length === 0) {

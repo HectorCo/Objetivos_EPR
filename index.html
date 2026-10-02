@@ -30,6 +30,12 @@
       <button id="fb-auth-btn" class="fb-btn fb-btn-primary" style="padding:12px 24px;font-size:14px;display:none;">
         iniciar sesión con Google
       </button>
+      <div id="fb-auth-help" style="display:none;margin-top:20px;font-size:12px;color:#999;line-height:1.5;">
+        ¿No funciona el login?<br>
+        <button id="fb-auth-reset" style="background:none;border:none;color:#1F5C99;text-decoration:underline;cursor:pointer;font:inherit;padding:4px;">
+          limpiar sesión y reintentar
+        </button>
+      </div>
     </div>
   </div>
 
@@ -86,7 +92,6 @@
 
     <!-- OPERACIONES -->
     <div class="fb-section" id="tab-operaciones">
-      <!-- Barra de filtros -->
       <div id="ops-filters" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;padding:14px 16px;border-radius:12px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04);">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <input type="text" class="fb-input" id="filter-search" placeholder="buscar (tipo, dirección, importe…)" style="flex:1;min-width:200px;max-width:320px;">
@@ -185,11 +190,28 @@
     (function () {
       var status = document.getElementById('fb-auth-status');
       var btn = document.getElementById('fb-auth-btn');
+      var help = document.getElementById('fb-auth-help');
+      var resetBtn = document.getElementById('fb-auth-reset');
 
       function showError(msg) {
         if (status) { status.style.display = 'block'; status.textContent = '⚠️ ' + msg; }
         if (btn) btn.style.display = 'none';
         console.error('[Fincas Blanco]', msg);
+      }
+
+      // Botón "limpiar sesión y reintentar" en la pantalla de login
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          try {
+            Object.keys(localStorage).forEach(function (k) {
+              if (k.indexOf('firebase') !== -1) localStorage.removeItem(k);
+            });
+            location.reload();
+          } catch (e) {
+            console.error('Error al limpiar sesión:', e);
+            location.reload();
+          }
+        });
       }
 
       var firebaseConfig = {
@@ -204,11 +226,6 @@
 
       if (!window.firebase) {
         showError('El SDK de Firebase no se cargó. Comprueba tu conexión o bloqueadores de anuncios.');
-        return;
-      }
-
-      if (firebaseConfig.apiKey.indexOf('AQUI_TU') !== -1) {
-        showError('Falta configurar firebaseConfig. Abre index.html y pon tus credenciales de Firebase.');
         return;
       }
 
@@ -236,6 +253,19 @@
 
         if (status) status.textContent = 'Firebase listo. Comprobando sesión…';
         window.dispatchEvent(new Event('firebase-ready'));
+
+        // TIMEOUT DE SEGURIDAD
+        setTimeout(function () {
+          var main = document.getElementById('fb-main');
+          var isMainVisible = main && main.style.display === 'block';
+          if (!isMainVisible && status && status.textContent.indexOf('Comprobando') !== -1) {
+            console.warn('[Fincas Blanco] Timeout auth, mostrando login de emergencia');
+            if (status) status.textContent = 'Sesión expirada o no disponible.';
+            if (btn) btn.style.display = 'inline-flex';
+            if (help) help.style.display = 'block';
+          }
+        }, 8000);
+
       } catch (err) {
         showError('Error inicializando Firebase: ' + (err && err.message ? err.message : err));
       }

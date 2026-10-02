@@ -8,16 +8,22 @@
   <title>Objetivos Fincas Blanco Enric Prat de la Riba</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="assets/icons/icon-192.png">
+
+  <!-- Fuente Inter (Google Fonts) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
   <!-- Pantalla de login -->
-  <div id="fb-auth-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fff;z-index:9999;">
+  <div id="fb-auth-screen" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#fafafa;z-index:9999;">
     <div style="max-width:360px;padding:32px;text-align:center;">
-      <div style="font-size:22px;font-weight:500;letter-spacing:-0.3px;margin-bottom:8px;">objetivos fincas blanco</div>
+      <div style="font-size:22px;font-weight:600;letter-spacing:-0.3px;margin-bottom:8px;color:#111;">objetivos fincas blanco</div>
       <div style="font-size:14px;color:#666;margin-bottom:24px;">Enric Prat de la Riba</div>
       <div id="fb-auth-status" style="font-size:13px;color:#666;margin-bottom:16px;">Cargando…</div>
-      <button id="fb-auth-btn" class="fb-btn fb-btn-primary" style="padding:10px 20px;font-size:14px;display:none;">
+      <button id="fb-auth-btn" class="fb-btn fb-btn-primary" style="padding:12px 24px;font-size:14px;display:none;">
         iniciar sesión con Google
       </button>
     </div>
@@ -77,7 +83,7 @@
     <!-- OPERACIONES -->
     <div class="fb-section" id="tab-operaciones">
       <!-- Barra de filtros -->
-      <div id="ops-filters" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;padding:12px;border:1px solid var(--kimi-color-border);border-radius:10px;background:color-mix(in srgb, var(--kimi-color-bg-hover) 40%, transparent);">
+      <div id="ops-filters" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;padding:14px 16px;border-radius:12px;background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.04);">
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <input type="text" class="fb-input" id="filter-search" placeholder="buscar (tipo, dirección, importe…)" style="flex:1;min-width:200px;max-width:320px;">
           <select class="fb-select" id="filter-year" style="width:auto;min-width:110px;">
@@ -92,7 +98,7 @@
           <button class="fb-btn fb-btn-sm" id="filter-clear" title="limpiar todos los filtros">limpiar filtros</button>
         </div>
         <div id="filter-types" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--kimi-color-text-secondary);">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12px;color:#666;">
           <span id="filter-count">—</span>
           <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
             <input type="checkbox" id="filter-compact">

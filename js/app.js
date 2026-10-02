@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v23 - falta sin signo)
+// Fincas Blanco - Aplicación principal (v24 - color bono inline)
 (function () {
   'use strict';
 
@@ -625,19 +625,24 @@
     FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
     // ⚠️ Tabla "falta para bono":
-    // - Cuando falta (falta > 0) → color rojo
-    // - Cuando se ha superado (falta <= 0) → color verde
-    // - En ambos casos mostramos la cantidad SIN signo (valor absoluto)
+    // - Rojo si falta por escriturar (falta > 0)
+    // - Verde si ya se ha superado (falta <= 0)
+    // - En ambos casos se muestra el valor absoluto (sin signo)
+    // Usamos style inline para asegurar que el color se aplica por encima
+    // de la regla general `.fb-table td { color: var(--fb-text) }`.
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
       trimData.forEach(td => {
-        const faltaClass = td.falta > 0 ? 'fb-negative' : 'fb-positive';
+        const faltaPositiva = td.falta > 0;
         const faltaAbs = Math.abs(td.falta);
+        const color = faltaPositiva
+          ? 'var(--fb-danger, #dc2626)'
+          : 'var(--fb-positive, #16a34a)';
         tbody += '<tr>'
               + '<td>' + td.trimestre + 'º</td>'
               + '<td class="num">' + FB.fmt(td.ingresos) + '</td>'
-              + '<td class="num ' + faltaClass + '">' + FB.fmt(faltaAbs) + '</td>'
+              + '<td class="num" style="color:' + color + ';font-weight:500">' + FB.fmt(faltaAbs) + '</td>'
               + '<td class="num">' + td.pisos + '</td>'
               + '</tr>';
       });

@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v19 - fix contratos año)
+// Fincas Blanco - Aplicación principal (v20 - filtros de operaciones)
 (function () {
   'use strict';
 
@@ -14,7 +14,18 @@
     nextId: 1,
     activeTab: 'dashboard',
     user: null,
-    canWrite: false
+    canWrite: false,
+    // Filtros de operaciones
+    filters: {
+      search: '',
+      year: '',          // '' = todos, o un año concreto
+      type: 'todas',     // 'todas' | 'VENTA PISO' | ...
+      monthFrom: '',     // '' o índice 0-13
+      monthTo: '',       // '' o índice 0-13
+      compact: false,
+      sortField: '',     // '' | 'month' | 'type' | 'qty' | 'honorarios' | 'escritura' | 'pct' | 'siniva'
+      sortDir: 'asc'     // 'asc' | 'desc'
+    }
   };
 
   // ===== HELPERS CROSS-YEAR =====
@@ -41,8 +52,6 @@
     return result;
   }
 
-  // ⚠️ FIX v19: solo leemos contratos DEL AÑO ACTUAL, no de otros años.
-  // Esto evita que un residuo con el mismo opId en otro año "gane" al correcto.
   function collectContractsForYear(year, ops) {
     const result = [];
     const visibleOpIds = {};
@@ -151,6 +160,86 @@
       if (!state.allYears[y]) return;
       FB.saveYear(y, state.allYears[y]);
     });
+  }
+
+  // ===== FILTROS =====
+  // Aplica los filtros al array de ops visibles del año actual.
+  // Devuelve un nuevo array ordenado y filtrado.
+  function applyOpsFilters(ops) {
+    const f = state.filters;
+
+    // Texto: se busca en type, escritura, addr del contrato vinculado, y en
+    // los valores numéricos formateados.
+    const searchLower = (f.search || '').trim().toLowerCase();
+
+    let filtered = ops.filter(op => {
+      // Filtro de año (por captureYear)
+      if (f.year !== '') {
+        const cy = FB.getCaptureYear(op, state.year);
+        if (String(cy) !== String(f.year)) return false;
+      }
+
+      // Filtro de tipo
+      if (f.type && f.type !== 'todas') {
+        if (op.type !== f.type) return false;
+      }
+
+      // Filtro por rango de meses (op.month 0-13)
+      if (f.monthFrom !== '') {
+        const from = parseInt(f.monthFrom, 10);
+        if (!isNaN(from) && op.month < from) return false;
+      }
+      if (f.monthTo !== '') {
+        const to = parseInt(f.monthTo, 10);
+        if (!isNaN(to) && op.month > to) return false;
+      }
+
+      // Filtro de búsqueda de texto libre
+      if (searchLower) {
+        const linked = state.contracts.find(c => c.opId === op.id) || {};
+        const haystack = [
+          op.type,
+          FB.TYPE_LABELS[op.type] || '',
+          op.escritura,
+          op.qty,
+          op.honorarios,
+          op.pct,
+          FB.fmt(FB.calcSinIva(op)),
+          linked.addr || '',
+          linked.date || ''
+        ].join(' ').toLowerCase();
+        if (haystack.indexOf(searchLower) === -1) return false;
+      }
+
+      return true;
+    });
+
+    // Ordenación
+    if (f.sortField) {
+      const dir = f.sortDir === 'desc' ? -1 : 1;
+      filtered = filtered.slice().sort((a, b) => {
+        const va = getSortValue(a, f.sortField);
+        const vb = getSortValue(b, f.sortField);
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    }
+
+    return filtered;
+  }
+
+  function getSortValue(op, field) {
+    switch (field) {
+      case 'month': return op.month;
+      case 'type': return String(op.type || '').toLowerCase();
+      case 'qty': return Number(op.qty) || 0;
+      case 'honorarios': return Number(op.honorarios) || 0;
+      case 'escritura': return String(op.escritura || '').toLowerCase();
+      case 'pct': return Number(op.pct) || 0;
+      case 'siniva': return FB.calcSinIva(op);
+      default: return 0;
+    }
   }
 
   // ===== AUTENTICACIÓN =====
@@ -262,6 +351,7 @@
   // ===== INICIALIZACIÓN =====
   function init() {
     bindEvents();
+    setupFilters();
     updateYearDisplay();
     renderDashboard();
     renderOperaciones();
@@ -318,6 +408,133 @@
     });
   }
 
+  // ===== SETUP DE FILTROS =====
+  function setupFilters() {
+    // Inputs de texto / selects
+    const searchEl = document.getElementById('filter-search');
+    const yearEl = document.getElementById('filter-year');
+    const monthFromEl = document.getElementById('filter-month-from');
+    const monthToEl = document.getElementById('filter-month-to');
+    const clearBtn = document.getElementById('filter-clear');
+    const compactEl = document.getElementById('filter-compact');
+    const typesContainer = document.getElementById('filter-types');
+
+    // Rellenar select de años (todos los años que existen en allYears)
+    function fillYearOptions() {
+      if (!yearEl) return;
+      const current = state.filters.year;
+      const years = Object.keys(state.allYears || {}).map(y => parseInt(y, 10)).sort();
+      let html = '<option value="">todos los años</option>';
+      years.forEach(y => {
+        html += '<option value="' + y + '"' + (String(current) === String(y) ? ' selected' : '') + '>' + y + '</option>';
+      });
+      yearEl.innerHTML = html;
+    }
+    fillYearOptions();
+
+    // Rellenar selects de mes (0-13) con etiquetas dependientes del año mostrado
+    function fillMonthOptions() {
+      const fromVal = state.filters.monthFrom;
+      const toVal = state.filters.monthTo;
+      let htmlFrom = '<option value="">mes desde</option>';
+      let htmlTo = '<option value="">mes hasta</option>';
+      for (let i = 0; i < 14; i++) {
+        const label = FB.getMonthLabel(i, state.year);
+        htmlFrom += '<option value="' + i + '"' + (String(fromVal) === String(i) ? ' selected' : '') + '>' + label + '</option>';
+        htmlTo += '<option value="' + i + '"' + (String(toVal) === String(i) ? ' selected' : '') + '>' + label + '</option>';
+      }
+      if (monthFromEl) monthFromEl.innerHTML = htmlFrom;
+      if (monthToEl) monthToEl.innerHTML = htmlTo;
+    }
+    fillMonthOptions();
+
+    // Botones de tipo
+    function renderTypeButtons() {
+      if (!typesContainer) return;
+      const all = [['todas', 'todas']].concat(FB.TYPES.map(t => [t, FB.TYPE_LABELS[t]]));
+      let html = '';
+      all.forEach(([value, label]) => {
+        const active = (state.filters.type === value);
+        const style = active
+          ? 'padding:4px 12px;border-radius:9999px;border:1px solid var(--kimi-color-text-primary);background:var(--kimi-color-text-primary);color:var(--kimi-color-bg-primary);font-size:12px;font-weight:500;cursor:pointer;'
+          : 'padding:4px 12px;border-radius:9999px;border:1px solid var(--kimi-color-border);background:transparent;color:var(--kimi-color-text-primary);font-size:12px;font-weight:500;cursor:pointer;';
+        html += '<button type="button" data-type="' + value + '" style="' + style + '">' + label + '</button>';
+      });
+      typesContainer.innerHTML = html;
+
+      typesContainer.querySelectorAll('button[data-type]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.filters.type = btn.dataset.type;
+          renderTypeButtons();
+          renderOperaciones();
+        });
+      });
+    }
+    renderTypeButtons();
+
+    // Listeners
+    if (searchEl) {
+      searchEl.value = state.filters.search;
+      searchEl.addEventListener('input', () => {
+        state.filters.search = searchEl.value;
+        renderOperaciones();
+      });
+    }
+    if (yearEl) {
+      yearEl.addEventListener('change', () => {
+        state.filters.year = yearEl.value;
+        renderOperaciones();
+      });
+    }
+    if (monthFromEl) {
+      monthFromEl.addEventListener('change', () => {
+        state.filters.monthFrom = monthFromEl.value;
+        renderOperaciones();
+      });
+    }
+    if (monthToEl) {
+      monthToEl.addEventListener('change', () => {
+        state.filters.monthTo = monthToEl.value;
+        renderOperaciones();
+      });
+    }
+    if (compactEl) {
+      compactEl.checked = state.filters.compact;
+      compactEl.addEventListener('change', () => {
+        state.filters.compact = compactEl.checked;
+        renderOperaciones();
+      });
+    }
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        state.filters = {
+          search: '',
+          year: '',
+          type: 'todas',
+          monthFrom: '',
+          monthTo: '',
+          compact: false,
+          sortField: '',
+          sortDir: 'asc'
+        };
+        if (searchEl) searchEl.value = '';
+        if (yearEl) yearEl.value = '';
+        if (monthFromEl) monthFromEl.value = '';
+        if (monthToEl) monthToEl.value = '';
+        if (compactEl) compactEl.checked = false;
+        renderTypeButtons();
+        renderOperaciones();
+      });
+    }
+
+    // Guardar referencias para reusar en otros sitios
+    state._ui = {
+      fillYearOptions,
+      fillMonthOptions,
+      renderTypeButtons
+    };
+  }
+
   function switchTab(tabName) {
     state.activeTab = tabName;
     document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tabName));
@@ -326,6 +543,7 @@
       if (tabName === 'dashboard') renderDashboard();
       if (tabName === 'graficos') renderGraficos();
       if (tabName === 'resumen') renderResumen();
+      if (tabName === 'operaciones') renderOperaciones();
     }));
   }
 
@@ -437,24 +655,70 @@
     }
   }
 
-  // ===== OPERACIONES =====
+  // ===== OPERACIONES (con filtros) =====
   function renderOperaciones() {
     const container = document.getElementById('ops-container');
     if (!container) return;
 
+    // Aplicar filtros
+    const filtered = applyOpsFilters(state.ops);
+
+    // Actualizar contador
+    const countEl = document.getElementById('filter-count');
+    if (countEl) {
+      const total = state.ops.length;
+      const mostradas = filtered.length;
+      countEl.textContent = mostradas === total
+        ? 'mostrando ' + total + ' operaciones'
+        : 'mostrando ' + mostradas + ' de ' + total + ' operaciones';
+    }
+
+    // Agrupar por mes
+    const groupsByMonth = {};
+    filtered.forEach(op => {
+      if (!groupsByMonth[op.month]) groupsByMonth[op.month] = [];
+      groupsByMonth[op.month].push(op);
+    });
+
     let html = '';
+    const isEditingNew = state.editingOp && state.editingOp.id === 0;
+    const newOpMonth = isEditingNew ? state.editingOp.month : -1;
+
+    // Si estamos creando una nueva op, aseguramos que su mes se muestra
+    if (isEditingNew && !groupsByMonth[newOpMonth]) {
+      groupsByMonth[newOpMonth] = [];
+    }
+
     for (let m = 0; m < 14; m++) {
-      const ops = state.ops.filter(o => o.month === m);
-      const isEditingNew = state.editingOp && state.editingOp.id === 0 && state.editingOp.month === m;
-      if (ops.length === 0 && !isEditingNew) continue;
+      const ops = groupsByMonth[m] || [];
+      const isEditingNewHere = isEditingNew && newOpMonth === m;
+      if (ops.length === 0 && !isEditingNewHere) continue;
 
       html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m, state.year) + '</div>';
-      html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>'
-            + '<th>mes pys</th>'
-            + '<th>tipo</th><th class="center">cant</th><th class="num">honorarios</th>'
-            + '<th>escritura</th><th class="center">año escr.</th><th class="num">%</th><th class="num">sin iva</th>'
-            + (state.canWrite ? '<th></th>' : '')
-            + '</tr></thead><tbody>';
+      html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>';
+
+      // Cabeceras con sort
+      const headers = [
+        { key: 'month', label: 'mes pys', align: 'left' },
+        { key: 'type', label: 'tipo', align: 'left' },
+        { key: 'qty', label: 'cant', align: 'center' },
+        { key: 'honorarios', label: 'honorarios', align: 'num' },
+        { key: 'escritura', label: 'escritura', align: 'left' },
+        { key: '', label: 'año escr.', align: 'center' },
+        { key: 'pct', label: '%', align: 'num' },
+        { key: 'siniva', label: 'sin iva', align: 'num' }
+      ];
+      headers.forEach(h => {
+        const isSortable = !!h.key;
+        const isActive = state.filters.sortField === h.key;
+        const arrow = isActive ? (state.filters.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+        const cls = h.align === 'num' ? 'num' : (h.align === 'center' ? 'center' : '');
+        const cursor = isSortable ? 'cursor:pointer;user-select:none;' : '';
+        const onclick = isSortable ? ' onclick="App.toggleSort(\'' + h.key + '\')"' : '';
+        html += '<th class="' + cls + '" style="' + cursor + '"' + onclick + '>' + h.label + arrow + '</th>';
+      });
+      html += (state.canWrite ? '<th></th>' : '');
+      html += '</tr></thead><tbody>';
 
       ops.forEach(op => {
         if (state.editingOp && state.editingOp.id === op.id && state.editingOp._fromYear === op._fromYear) {
@@ -464,13 +728,32 @@
         }
       });
 
-      if (isEditingNew) html += renderOpEditRow(state.editingOp);
+      if (isEditingNewHere) html += renderOpEditRow(state.editingOp);
 
       html += '</tbody></table></div>';
     }
 
-    container.innerHTML = html || '<div class="fb-muted fb-center" style="padding:60px 20px">no hay operaciones registradas.</div>';
+    if (!html) {
+      const hasFilters = state.filters.search || state.filters.year || state.filters.type !== 'todas'
+        || state.filters.monthFrom !== '' || state.filters.monthTo !== '';
+      container.innerHTML = '<div class="fb-muted fb-center" style="padding:60px 20px">'
+        + (hasFilters ? 'ninguna operación coincide con los filtros.' : 'no hay operaciones registradas.')
+        + '</div>';
+    } else {
+      container.innerHTML = html;
+    }
   }
+
+  App.toggleSort = function (field) {
+    if (!field) return;
+    if (state.filters.sortField === field) {
+      state.filters.sortDir = state.filters.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.filters.sortField = field;
+      state.filters.sortDir = 'asc';
+    }
+    renderOperaciones();
+  };
 
   function getEscrituraCell(op) {
     const ey = FB.getEscrituraYear(op, state.year);
@@ -974,8 +1257,6 @@
     loadYear(state.year);
     renderAll();
     showToast('🔧 contratos reparados');
-    console.log('[Repair] Contratos por año:',
-      Object.keys(repaired).map(y => y + ': ' + (repaired[y].contracts || []).length).join(', '));
   };
 
   App.exportExcel = function () {
@@ -1056,6 +1337,8 @@
 
   App.selectYear = function (year) {
     loadYear(year);
+    // Actualizar los selects de mes del filtro porque las etiquetas cambian
+    if (state._ui && state._ui.fillMonthOptions) state._ui.fillMonthOptions();
     renderAll();
     closeModal();
     showToast('año cambiado a ' + year);

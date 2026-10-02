@@ -169,7 +169,8 @@
       });
       if (Array.isArray(contracts)) {
         contracts.forEach(c => {
-          const op = ops.find(o => o.id === c.opId);
+          // ⚠️ FIX: comparación con String()
+          const op = ops.find(o => String(o.id) === String(c.opId));
           if (!op) return;
           const ey = this.getEscrituraYear(op, year);
           if (ey !== year) return;
@@ -194,7 +195,8 @@
       });
       if (Array.isArray(contracts)) {
         contracts.forEach(c => {
-          const op = ops.find(o => o.id === c.opId);
+          // ⚠️ FIX: comparación con String()
+          const op = ops.find(o => String(o.id) === String(c.opId));
           if (!op) return;
           const ey = this.getEscrituraYear(op, year);
           if (ey !== year) return;
@@ -231,8 +233,6 @@
     // =========================================================
     // ---------- HELPERS DE CONTRATOS ----------
     // =========================================================
-    // Busca en qué año está guardado un contrato por opId.
-    // Devuelve { year, index } o null si no se encuentra.
     findContractYear(all, opId) {
       if (!all || opId == null) return null;
       const years = Object.keys(all);
@@ -240,7 +240,8 @@
         const y = years[i];
         const block = all[y] || {};
         const contracts = block.contracts || [];
-        const idx = contracts.findIndex(c => c.opId === opId);
+        // ⚠️ FIX: comparación con String()
+        const idx = contracts.findIndex(c => String(c.opId) === String(opId));
         if (idx >= 0) return { year: parseInt(y, 10), index: idx };
       }
       return null;
@@ -356,16 +357,18 @@
         const opsClean = [];
         opsIn.forEach(raw => {
           const op = self.normalizeOp(raw, y);
-          if (opsSeen[op.id]) return;
+          // ⚠️ FIX: comparación con String()
+          if (opsSeen[String(op.id)]) return;
           if (Number(op.qty) === 0) return;
-          opsSeen[op.id] = true;
+          opsSeen[String(op.id)] = true;
           opsClean.push(op);
         });
 
         if (y === 2026) {
           self.DEFAULT_OPS.forEach(dop => {
             if (Number(dop.qty) === 0) return;
-            if (!opsSeen[dop.id]) {
+            // ⚠️ FIX: comparación con String()
+            if (!opsSeen[String(dop.id)]) {
               opsClean.push(self.normalizeOp(dop, y));
             }
           });
@@ -374,7 +377,8 @@
         const contractsSeen = {};
         const contractsClean = [];
         contractsIn.forEach(c => {
-          const op = opsClean.find(o => o.id === c.opId);
+          // ⚠️ FIX: comparación con String()
+          const op = opsClean.find(o => String(o.id) === String(c.opId));
           if (!op) return;
           const key = String(c.opId);
           if (contractsSeen[key]) return;
@@ -393,7 +397,7 @@
           ops: opsClean,
           contracts: contractsClean,
           goals: block.goals || Object.assign({}, self.DEFAULT_GOALS),
-          nextId: Math.max.apply(null, opsClean.map(o => o.id).concat([0])) + 1
+          nextId: 1
         };
       });
 
@@ -412,18 +416,16 @@
     // =========================================================
     // ---------- REPARACIÓN DE CONTRATOS ----------
     // =========================================================
-    // Deduplica contratos por opId en TODOS los años. Se queda con el que
-    // tenga la fecha (o val o contract) más reciente, y elimina el resto.
-    // Reasigna cada contrato al año de captación de su operación vinculada.
     repairContracts(all) {
       const result = JSON.parse(JSON.stringify(all || {}));
 
-      // 1) Índice de ops por id → { year, op }
+      // 1) Índice de ops por id (String) → { year, op }
       const opIndex = {};
       Object.keys(result).forEach(yStr => {
         const y = parseInt(yStr, 10);
         (result[yStr].ops || []).forEach(op => {
-          opIndex[op.id] = { year: y, op: op };
+          // ⚠️ FIX: clave String
+          opIndex[String(op.id)] = { year: y, op: op };
         });
       });
 
@@ -438,20 +440,17 @@
 
       // 3) Agrupar por opId y elegir el mejor de cada uno
       const byOpId = {};
-      const orphanContracts = [];
       allContracts.forEach(c => {
-        if (c.opId == null || !opIndex[c.opId]) {
-          orphanContracts.push(c);
-          return;
-        }
-        if (!byOpId[c.opId]) {
-          byOpId[c.opId] = c;
+        // ⚠️ FIX: comparación con String()
+        if (c.opId == null || !opIndex[String(c.opId)]) return;
+        const key = String(c.opId);
+        if (!byOpId[key]) {
+          byOpId[key] = c;
         } else {
-          // Compara por "frescura": más campos rellenos gana; empate = primero
-          const a = byOpId[c.opId];
+          const a = byOpId[key];
           const scoreA = (a.addr ? 1 : 0) + (a.date ? 1 : 0) + (Number(a.val) > 0 ? 1 : 0) + (Number(a.contract) > 0 ? 1 : 0);
           const scoreB = (c.addr ? 1 : 0) + (c.date ? 1 : 0) + (Number(c.val) > 0 ? 1 : 0) + (Number(c.contract) > 0 ? 1 : 0);
-          if (scoreB > scoreA) byOpId[c.opId] = c;
+          if (scoreB > scoreA) byOpId[key] = c;
         }
       });
 
@@ -459,17 +458,16 @@
       Object.keys(result).forEach(yStr => {
         result[yStr].contracts = [];
       });
-      Object.keys(byOpId).forEach(opId => {
-        const c = byOpId[opId];
-        const opIdNum = parseInt(opId, 10);
-        const info = opIndex[opIdNum];
+      Object.keys(byOpId).forEach(opIdKey => {
+        const c = byOpId[opIdKey];
+        const info = opIndex[opIdKey];
         if (!info) return;
         const targetYear = info.op.captureYear != null ? info.op.captureYear : info.year;
         if (!result[targetYear]) {
           result[targetYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
         }
         result[targetYear].contracts.push({
-          opId: opIdNum,
+          opId: c.opId,
           date: c.date || '',
           addr: c.addr || '',
           val: Number(c.val) || 0,

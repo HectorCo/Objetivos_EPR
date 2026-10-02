@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v25 - IDs únicos globales)
+// Fincas Blanco - Aplicación principal (v26 - fix editar en resumen)
 (function () {
   'use strict';
 
@@ -30,8 +30,6 @@
   const FILTER_TYPES = ['VENTA PISO', 'VENTA LOCAL', 'ALQUILER', 'VENTA PARKING'];
 
   // ===== GENERADOR DE IDs ÚNICOS GLOBALES =====
-  // Formato: "timestamp_random" (ej. "1759402830123_482")
-  // Garantiza que no colisionen entre años ni entre sesiones.
   function generateUniqueId() {
     return Date.now() + '_' + Math.floor(Math.random() * 1000);
   }
@@ -674,7 +672,7 @@
     });
 
     let html = '';
-    const isEditingNew = state.editingOp && state.editingOp.id === 0;
+    const isEditingNew = state.editingOp && String(state.editingOp.id) === '0';
     const newOpMonth = isEditingNew ? state.editingOp.month : -1;
 
     if (isEditingNew && !groupsByMonth[newOpMonth]) {
@@ -712,7 +710,7 @@
       html += '</tr></thead><tbody>';
 
       ops.forEach(op => {
-        if (state.editingOp && String(state.editingOp.id) === String(op.id) && state.editingOp._fromYear === op._fromYear) {
+        if (state.editingOp && String(state.editingOp.id) === String(op.id) && parseInt(state.editingOp._fromYear, 10) === parseInt(op._fromYear, 10)) {
           html += renderOpEditRow(op);
         } else {
           html += renderOpRow(op);
@@ -854,7 +852,7 @@
       } else {
         ventas.forEach(op => {
           const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
-          const isEditing = state.editingAddressOpId === op.id;
+          const isEditing = String(state.editingAddressOpId) === String(op.id);
           if (isEditing) {
             tbody += renderAddressEditRow(op, linked);
           } else {
@@ -876,7 +874,7 @@
       } else {
         alquileres.forEach(op => {
           const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
-          const isEditing = state.editingAddressOpId === op.id;
+          const isEditing = String(state.editingAddressOpId) === String(op.id);
           if (isEditing) {
             tbody += renderAddressEditRow(op, linked);
           } else {
@@ -1023,7 +1021,7 @@
     if (monthIndex > 13) monthIndex = 13;
 
     state.editingOp = {
-      id: 0,
+      id: '0',
       month: monthIndex,
       captureYear: state.year,
       escrituraYear: state.year,
@@ -1049,10 +1047,24 @@
 
   App.editOp = function (id, fromYear) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    const op = state.ops.find(o => String(o.id) === String(id) && o._fromYear === fromYear);
+    const fy = (fromYear != null && fromYear !== 'null' && fromYear !== 'undefined') ? parseInt(fromYear, 10) : null;
+    let op = state.ops.find(o => {
+      const sameId = String(o.id) === String(id);
+      const sameYear = (fy == null) || (parseInt(o._fromYear, 10) === fy);
+      return sameId && sameYear;
+    });
+    if (!op) {
+      op = state.ops.find(o => String(o.id) === String(id));
+    }
     if (op) {
       state.editingOp = JSON.parse(JSON.stringify(op));
       renderOperaciones();
+      setTimeout(() => {
+        const fila = document.querySelector('#ops-container tr.fb-edit-row');
+        if (fila) fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+    } else {
+      showToast('no se encontró la operación');
     }
   };
 
@@ -1060,22 +1072,35 @@
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (!confirm('¿eliminar esta operación?')) return;
 
-    const op = state.ops.find(o => String(o.id) === String(id) && o._fromYear === fromYear);
-    if (!op) return;
+    const fy = (fromYear != null && fromYear !== 'null') ? parseInt(fromYear, 10) : null;
+    let op = state.ops.find(o => {
+      const sameId = String(o.id) === String(id);
+      const sameYear = (fy == null) || (parseInt(o._fromYear, 10) === fy);
+      return sameId && sameYear;
+    });
+    if (!op) {
+      op = state.ops.find(o => String(o.id) === String(id));
+    }
+    if (!op) { showToast('no se encontró la operación'); return; }
 
-    state.ops = state.ops.filter(o => !(String(o.id) === String(id) && o._fromYear === fromYear));
+    const opFromYear = (op._fromYear != null) ? parseInt(op._fromYear, 10) : state.year;
+
+    state.ops = state.ops.filter(o => {
+      const sameId = String(o.id) === String(id);
+      const sameYear = parseInt(o._fromYear, 10) === opFromYear;
+      return !(sameId && sameYear);
+    });
     state.contracts = state.contracts.filter(c => String(c.opId) !== String(id));
 
-    const block = state.allYears[fromYear];
+    const block = state.allYears[opFromYear];
     if (block) {
       block.ops = block.ops.filter(o => String(o.id) !== String(id));
-      // Solo eliminamos contratos vinculados del año donde vive la op
       if (block.contracts) {
         block.contracts = block.contracts.filter(c => String(c.opId) !== String(id));
       }
     }
 
-    FB.saveYear(fromYear, block);
+    FB.saveYear(opFromYear, block);
     loadYear(state.year);
     renderAll();
     showToast('operación eliminada');
@@ -1144,10 +1169,15 @@
     renderOperaciones();
   };
 
+  // ⚠️ FIX: normalización de tipos con String() para evitar fallos con IDs
   App.editAddress = function (opId) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    state.editingAddressOpId = opId;
+    state.editingAddressOpId = String(opId);
     renderResumen();
+    setTimeout(() => {
+      const fila = document.querySelector('#dir-vendidas tr.fb-edit-row, #dir-alquiladas tr.fb-edit-row');
+      if (fila) fila.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
   };
 
   App.cancelAddrEdit = function () {
@@ -1155,9 +1185,6 @@
     renderResumen();
   };
 
-  // ⚠️ FIX: solo borra y guarda en el año de origen, no en todos los años.
-  // Antes recorría TODOS los años y podía borrar contratos con el mismo
-  // opId en años distintos (colisión de IDs entre 2025 y 2026).
   App.saveAddress = function (opId) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const dateEl = document.getElementById('addr-date-' + opId);
@@ -1166,13 +1193,13 @@
     if (!dateEl || !addrEl || !valEl) { showToast('error: campos no encontrados'); return; }
 
     const op = state.ops.find(o => String(o.id) === String(opId));
-    if (!op) return;
-    const fromYear = op._fromYear != null ? op._fromYear : state.year;
+    if (!op) { showToast('no se encontró la operación'); return; }
+    const fromYear = (op._fromYear != null) ? parseInt(op._fromYear, 10) : state.year;
     const isRent = op.type === 'ALQUILER';
 
     const dateISO = FB.parseDateEU(dateEl.value);
     const entry = {
-      opId: opId,
+      opId: String(opId),
       date: dateISO || dateEl.value,
       addr: addrEl.value,
       val: parseFloat(valEl.value) || 0
@@ -1183,18 +1210,15 @@
       entry.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
     }
 
-    // Solo modificamos el bloque del año donde vive la op
     if (!state.allYears[fromYear]) {
       state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
     }
     const block = state.allYears[fromYear];
     if (!block.contracts) block.contracts = [];
 
-    // Eliminamos solo el contrato de este opId en ESTE año
     block.contracts = block.contracts.filter(c => String(c.opId) !== String(opId));
     block.contracts.push(entry);
 
-    // Guardamos solo ese año
     FB.saveYear(fromYear, block);
 
     state.editingAddressOpId = null;

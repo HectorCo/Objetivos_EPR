@@ -76,13 +76,8 @@
 
     <!-- OPERACIONES -->
     <div class="fb-section" id="tab-operaciones">
-      <div class="fb-flex fb-flex-between fb-mb-md">
-        <div class="fb-small">gestiona las operaciones por mes de captación</div>
-      </div>
-
       <!-- Barra de filtros -->
       <div id="ops-filters" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;padding:12px;border:1px solid var(--kimi-color-border);border-radius:10px;background:color-mix(in srgb, var(--kimi-color-bg-hover) 40%, transparent);">
-        <!-- Fila 1: búsqueda + año + rango de meses + botón limpiar -->
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <input type="text" class="fb-input" id="filter-search" placeholder="buscar (tipo, dirección, importe…)" style="flex:1;min-width:200px;max-width:320px;">
           <select class="fb-select" id="filter-year" style="width:auto;min-width:110px;">
@@ -96,9 +91,7 @@
           </select>
           <button class="fb-btn fb-btn-sm" id="filter-clear" title="limpiar todos los filtros">limpiar filtros</button>
         </div>
-        <!-- Fila 2: filtros por tipo -->
         <div id="filter-types" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
-        <!-- Fila 3: contador + ordenación + vista compacta -->
         <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--kimi-color-text-secondary);">
           <span id="filter-count">—</span>
           <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">

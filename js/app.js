@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v20 - filtros de operaciones)
+// Fincas Blanco - Aplicación principal (v21 - fix hoisting App)
 (function () {
   'use strict';
 
@@ -15,16 +15,15 @@
     activeTab: 'dashboard',
     user: null,
     canWrite: false,
-    // Filtros de operaciones
     filters: {
       search: '',
-      year: '',          // '' = todos, o un año concreto
-      type: 'todas',     // 'todas' | 'VENTA PISO' | ...
-      monthFrom: '',     // '' o índice 0-13
-      monthTo: '',       // '' o índice 0-13
+      year: '',
+      type: 'todas',
+      monthFrom: '',
+      monthTo: '',
       compact: false,
-      sortField: '',     // '' | 'month' | 'type' | 'qty' | 'honorarios' | 'escritura' | 'pct' | 'siniva'
-      sortDir: 'asc'     // 'asc' | 'desc'
+      sortField: '',
+      sortDir: 'asc'
     }
   };
 
@@ -163,28 +162,20 @@
   }
 
   // ===== FILTROS =====
-  // Aplica los filtros al array de ops visibles del año actual.
-  // Devuelve un nuevo array ordenado y filtrado.
   function applyOpsFilters(ops) {
     const f = state.filters;
-
-    // Texto: se busca en type, escritura, addr del contrato vinculado, y en
-    // los valores numéricos formateados.
     const searchLower = (f.search || '').trim().toLowerCase();
 
     let filtered = ops.filter(op => {
-      // Filtro de año (por captureYear)
       if (f.year !== '') {
         const cy = FB.getCaptureYear(op, state.year);
         if (String(cy) !== String(f.year)) return false;
       }
 
-      // Filtro de tipo
       if (f.type && f.type !== 'todas') {
         if (op.type !== f.type) return false;
       }
 
-      // Filtro por rango de meses (op.month 0-13)
       if (f.monthFrom !== '') {
         const from = parseInt(f.monthFrom, 10);
         if (!isNaN(from) && op.month < from) return false;
@@ -194,7 +185,6 @@
         if (!isNaN(to) && op.month > to) return false;
       }
 
-      // Filtro de búsqueda de texto libre
       if (searchLower) {
         const linked = state.contracts.find(c => c.opId === op.id) || {};
         const haystack = [
@@ -214,7 +204,6 @@
       return true;
     });
 
-    // Ordenación
     if (f.sortField) {
       const dir = f.sortDir === 'desc' ? -1 : 1;
       filtered = filtered.slice().sort((a, b) => {
@@ -410,7 +399,6 @@
 
   // ===== SETUP DE FILTROS =====
   function setupFilters() {
-    // Inputs de texto / selects
     const searchEl = document.getElementById('filter-search');
     const yearEl = document.getElementById('filter-year');
     const monthFromEl = document.getElementById('filter-month-from');
@@ -419,7 +407,6 @@
     const compactEl = document.getElementById('filter-compact');
     const typesContainer = document.getElementById('filter-types');
 
-    // Rellenar select de años (todos los años que existen en allYears)
     function fillYearOptions() {
       if (!yearEl) return;
       const current = state.filters.year;
@@ -432,7 +419,6 @@
     }
     fillYearOptions();
 
-    // Rellenar selects de mes (0-13) con etiquetas dependientes del año mostrado
     function fillMonthOptions() {
       const fromVal = state.filters.monthFrom;
       const toVal = state.filters.monthTo;
@@ -448,7 +434,6 @@
     }
     fillMonthOptions();
 
-    // Botones de tipo
     function renderTypeButtons() {
       if (!typesContainer) return;
       const all = [['todas', 'todas']].concat(FB.TYPES.map(t => [t, FB.TYPE_LABELS[t]]));
@@ -472,7 +457,6 @@
     }
     renderTypeButtons();
 
-    // Listeners
     if (searchEl) {
       searchEl.value = state.filters.search;
       searchEl.addEventListener('input', () => {
@@ -527,7 +511,6 @@
       });
     }
 
-    // Guardar referencias para reusar en otros sitios
     state._ui = {
       fillYearOptions,
       fillMonthOptions,
@@ -655,15 +638,13 @@
     }
   }
 
-  // ===== OPERACIONES (con filtros) =====
+  // ===== OPERACIONES =====
   function renderOperaciones() {
     const container = document.getElementById('ops-container');
     if (!container) return;
 
-    // Aplicar filtros
     const filtered = applyOpsFilters(state.ops);
 
-    // Actualizar contador
     const countEl = document.getElementById('filter-count');
     if (countEl) {
       const total = state.ops.length;
@@ -673,7 +654,6 @@
         : 'mostrando ' + mostradas + ' de ' + total + ' operaciones';
     }
 
-    // Agrupar por mes
     const groupsByMonth = {};
     filtered.forEach(op => {
       if (!groupsByMonth[op.month]) groupsByMonth[op.month] = [];
@@ -684,7 +664,6 @@
     const isEditingNew = state.editingOp && state.editingOp.id === 0;
     const newOpMonth = isEditingNew ? state.editingOp.month : -1;
 
-    // Si estamos creando una nueva op, aseguramos que su mes se muestra
     if (isEditingNew && !groupsByMonth[newOpMonth]) {
       groupsByMonth[newOpMonth] = [];
     }
@@ -697,7 +676,6 @@
       html += '<div class="fb-month-header" data-month="' + m + '">' + FB.getMonthLabel(m, state.year) + '</div>';
       html += '<div class="fb-table-wrap"><table class="fb-table"><thead><tr>';
 
-      // Cabeceras con sort
       const headers = [
         { key: 'month', label: 'mes pys', align: 'left' },
         { key: 'type', label: 'tipo', align: 'left' },
@@ -743,17 +721,6 @@
       container.innerHTML = html;
     }
   }
-
-  App.toggleSort = function (field) {
-    if (!field) return;
-    if (state.filters.sortField === field) {
-      state.filters.sortDir = state.filters.sortDir === 'asc' ? 'desc' : 'asc';
-    } else {
-      state.filters.sortField = field;
-      state.filters.sortDir = 'asc';
-    }
-    renderOperaciones();
-  };
 
   function getEscrituraCell(op) {
     const ey = FB.getEscrituraYear(op, state.year);
@@ -1021,6 +988,18 @@
 
   // ===== ACCIONES =====
   const App = {};
+
+  // ⚠️ Movido aquí (dentro del bloque App) para evitar el error de hoisting
+  App.toggleSort = function (field) {
+    if (!field) return;
+    if (state.filters.sortField === field) {
+      state.filters.sortDir = state.filters.sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      state.filters.sortField = field;
+      state.filters.sortDir = 'asc';
+    }
+    renderOperaciones();
+  };
 
   App.newOp = function () {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
@@ -1337,7 +1316,6 @@
 
   App.selectYear = function (year) {
     loadYear(year);
-    // Actualizar los selects de mes del filtro porque las etiquetas cambian
     if (state._ui && state._ui.fillMonthOptions) state._ui.fillMonthOptions();
     renderAll();
     closeModal();

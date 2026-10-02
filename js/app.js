@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v22 - filtros sin tasación)
+// Fincas Blanco - Aplicación principal (v23 - falta sin signo)
 (function () {
   'use strict';
 
@@ -27,7 +27,6 @@
     }
   };
 
-  // Tipos que aparecen en los botones de filtro (excluimos TASACIÓN)
   const FILTER_TYPES = ['VENTA PISO', 'VENTA LOCAL', 'ALQUILER', 'VENTA PARKING'];
 
   // ===== HELPERS CROSS-YEAR =====
@@ -439,7 +438,6 @@
 
     function renderTypeButtons() {
       if (!typesContainer) return;
-      // ⚠️ Filtramos TASACIÓN de los botones
       const all = [['todas', 'todas']].concat(FILTER_TYPES.map(t => [t, FB.TYPE_LABELS[t]]));
       let html = '';
       all.forEach(([value, label]) => {
@@ -606,7 +604,7 @@
       objetivoCard.innerHTML =
         '<div class="fb-card-title">inmuebles para alcanzar objetivo</div>'
         + '<div style="display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-top:8px;">'
-        + '  <div style="font-size:42px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;color:' + colorNumero + ';">'
+        + '  <div style="font-size:42px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;color:' + colorNumero + ';">'
         +     (objetivoAlcanzado ? '🎉' : pisosRestantes)
         + '  </div>'
         + '  <div class="fb-small fb-muted" style="line-height:1.4;">'
@@ -626,15 +624,20 @@
     const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
     FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
+    // ⚠️ Tabla "falta para bono":
+    // - Cuando falta (falta > 0) → color rojo
+    // - Cuando se ha superado (falta <= 0) → color verde
+    // - En ambos casos mostramos la cantidad SIN signo (valor absoluto)
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
       trimData.forEach(td => {
         const faltaClass = td.falta > 0 ? 'fb-negative' : 'fb-positive';
+        const faltaAbs = Math.abs(td.falta);
         tbody += '<tr>'
               + '<td>' + td.trimestre + 'º</td>'
               + '<td class="num">' + FB.fmt(td.ingresos) + '</td>'
-              + '<td class="num ' + faltaClass + '">' + FB.fmt(td.falta) + '</td>'
+              + '<td class="num ' + faltaClass + '">' + FB.fmt(faltaAbs) + '</td>'
               + '<td class="num">' + td.pisos + '</td>'
               + '</tr>';
       });
@@ -1264,7 +1267,7 @@
     lines.push('');
     lines.push('FALTA PARA BONO (TRIMESTRAL)');
     lines.push('Trimestre,Ingresos,Falta,Pisos');
-    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(td.falta) + ',' + td.pisos));
+    trimData.forEach(td => lines.push(td.trimestre + 'º,' + num(td.ingresos) + ',' + num(Math.abs(td.falta)) + ',' + td.pisos));
     lines.push('');
     lines.push('RESUMEN DE OBJETIVOS');
     lines.push('Concepto,Real,Objetivo');

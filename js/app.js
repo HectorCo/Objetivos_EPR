@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v24 - color bono inline)
+// Fincas Blanco - Aplicación principal (v25 - IDs únicos globales)
 (function () {
   'use strict';
 
@@ -29,6 +29,13 @@
 
   const FILTER_TYPES = ['VENTA PISO', 'VENTA LOCAL', 'ALQUILER', 'VENTA PARKING'];
 
+  // ===== GENERADOR DE IDs ÚNICOS GLOBALES =====
+  // Formato: "timestamp_random" (ej. "1759402830123_482")
+  // Garantiza que no colisionen entre años ni entre sesiones.
+  function generateUniqueId() {
+    return Date.now() + '_' + Math.floor(Math.random() * 1000);
+  }
+
   // ===== HELPERS CROSS-YEAR =====
   function collectOpsForYear(year) {
     const result = [];
@@ -57,7 +64,7 @@
     const result = [];
     const visibleOpIds = {};
     (ops || state.ops || []).forEach(op => {
-      visibleOpIds[op.id] = true;
+      visibleOpIds[String(op.id)] = true;
     });
 
     const block = state.allYears[year] || {};
@@ -65,9 +72,9 @@
     const seen = {};
     contracts.forEach(c => {
       if (c.opId == null) return;
-      if (!visibleOpIds[c.opId]) return;
-      if (seen[c.opId]) return;
-      seen[c.opId] = true;
+      if (!visibleOpIds[String(c.opId)]) return;
+      if (seen[String(c.opId)]) return;
+      seen[String(c.opId)] = true;
       result.push(Object.assign({}, c));
     });
     return result;
@@ -123,7 +130,7 @@
       delete clean._role;
       delete clean._fromYear;
 
-      const idx = block.ops.findIndex(o => o.id === op.id);
+      const idx = block.ops.findIndex(o => String(o.id) === String(op.id));
       if (idx >= 0) {
         block.ops[idx] = clean;
       } else {
@@ -132,7 +139,7 @@
     });
 
     state.contracts.forEach(c => {
-      const op = state.ops.find(o => o.id === c.opId);
+      const op = state.ops.find(o => String(o.id) === String(c.opId));
       if (!op) return;
 
       const fromYear = op._fromYear != null ? op._fromYear : state.year;
@@ -143,7 +150,7 @@
       }
 
       const block = state.allYears[fromYear];
-      const idx = block.contracts.findIndex(x => x.opId === c.opId);
+      const idx = block.contracts.findIndex(x => String(x.opId) === String(c.opId));
       const clean = Object.assign({}, c);
 
       if (idx >= 0) {
@@ -188,7 +195,7 @@
       }
 
       if (searchLower) {
-        const linked = state.contracts.find(c => c.opId === op.id) || {};
+        const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
         const haystack = [
           op.type,
           FB.TYPE_LABELS[op.type] || '',
@@ -624,12 +631,6 @@
     const escValues = FB.MONTHS_ESCRITURA.map(m => esc[m] || 0);
     FBCharts.renderBarChart('chart-escritura-dashboard', escValues, FB.MONTHS_ESCRITURA.map(m => m.slice(0, 3)), ['var(--kimi-chart-2)']);
 
-    // ⚠️ Tabla "falta para bono":
-    // - Rojo si falta por escriturar (falta > 0)
-    // - Verde si ya se ha superado (falta <= 0)
-    // - En ambos casos se muestra el valor absoluto (sin signo)
-    // Usamos style inline para asegurar que el color se aplica por encima
-    // de la regla general `.fb-table td { color: var(--fb-text) }`.
     const bonoTable = document.getElementById('bono-table');
     if (bonoTable) {
       let tbody = '';
@@ -711,7 +712,7 @@
       html += '</tr></thead><tbody>';
 
       ops.forEach(op => {
-        if (state.editingOp && state.editingOp.id === op.id && state.editingOp._fromYear === op._fromYear) {
+        if (state.editingOp && String(state.editingOp.id) === String(op.id) && state.editingOp._fromYear === op._fromYear) {
           html += renderOpEditRow(op);
         } else {
           html += renderOpRow(op);
@@ -773,8 +774,8 @@
       + '<td class="num" style="font-weight:500">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
       + (state.canWrite
           ? '<td class="num" style="width:90px"><span class="fb-row-actions">'
-            + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(' + id + ',' + fromYear + ')">editar</button>'
-            + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(' + id + ',' + fromYear + ')">×</button>'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editOp(\'' + id + '\',' + fromYear + ')">editar</button>'
+            + '<button class="fb-btn fb-btn-sm fb-btn-danger" onclick="App.delOp(\'' + id + '\',' + fromYear + ')">×</button>'
             + '</span></td>'
           : '')
       + '</tr>';
@@ -806,7 +807,7 @@
       + '<td><select class="fb-select" id="op-escyear-' + key + '" style="min-width:70px">' + yearOpts + '</select></td>'
       + '<td><input class="fb-input" id="op-pct-' + key + '" type="number" step="0.05" value="' + (op.pct != null ? op.pct : 1) + '" style="width:55px;text-align:right"></td>'
       + '<td class="num" style="color:var(--kimi-color-text-secondary)">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
-      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveOp(' + op.id + ',' + (op._fromYear != null ? op._fromYear : 'null') + ')">guardar</button> '
+      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveOp(\'' + op.id + '\',' + (op._fromYear != null ? op._fromYear : 'null') + ')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelEdit()">cancelar</button></td>'
       + '</tr>';
   }
@@ -852,7 +853,7 @@
         tbody = '<tr><td colspan="5" class="fb-muted fb-center" style="padding:24px">sin operaciones de venta.</td></tr>';
       } else {
         ventas.forEach(op => {
-          const linked = state.contracts.find(c => c.opId === op.id) || {};
+          const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
           const isEditing = state.editingAddressOpId === op.id;
           if (isEditing) {
             tbody += renderAddressEditRow(op, linked);
@@ -874,7 +875,7 @@
         tbody = '<tr><td colspan="6" class="fb-muted fb-center" style="padding:24px">sin operaciones de alquiler.</td></tr>';
       } else {
         alquileres.forEach(op => {
-          const linked = state.contracts.find(c => c.opId === op.id) || {};
+          const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
           const isEditing = state.editingAddressOpId === op.id;
           if (isEditing) {
             tbody += renderAddressEditRow(op, linked);
@@ -904,7 +905,7 @@
       + '<td class="num">' + FB.fmt(FB.calcSinIva(op)) + '</td>'
       + (state.canWrite
           ? '<td class="num" style="width:80px"><span class="fb-row-actions">'
-            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(\'' + op.id + '\')">editar</button>'
             + '</span></td>'
           : '')
       + '</tr>';
@@ -923,7 +924,7 @@
       + '<td class="num">' + FB.fmt(val) + '</td>'
       + (state.canWrite
           ? '<td class="num" style="width:80px"><span class="fb-row-actions">'
-            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(' + op.id + ')">editar</button>'
+            + '<button class="fb-btn fb-btn-sm" onclick="App.editAddress(\'' + op.id + '\')">editar</button>'
             + '</span></td>'
           : '')
       + '</tr>';
@@ -943,7 +944,7 @@
           ? '<td><input class="fb-input" id="addr-contract-' + op.id + '" type="number" step="0.01" value="' + contractVal + '" style="width:90px;text-align:right" placeholder="contrato"></td>'
           : '')
       + '<td><input class="fb-input" id="addr-val-' + op.id + '" type="number" step="0.01" value="' + valVal + '" style="width:90px;text-align:right"></td>'
-      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveAddress(' + op.id + ')">guardar</button> '
+      + '<td class="num"><button class="fb-btn fb-btn-sm fb-btn-primary" onclick="App.saveAddress(\'' + op.id + '\')">guardar</button> '
       + '<button class="fb-btn fb-btn-sm" onclick="App.cancelAddrEdit()">cancelar</button></td>'
       + '</tr>';
   }
@@ -1048,7 +1049,7 @@
 
   App.editOp = function (id, fromYear) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
-    const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
+    const op = state.ops.find(o => String(o.id) === String(id) && o._fromYear === fromYear);
     if (op) {
       state.editingOp = JSON.parse(JSON.stringify(op));
       renderOperaciones();
@@ -1059,20 +1060,19 @@
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     if (!confirm('¿eliminar esta operación?')) return;
 
-    const op = state.ops.find(o => o.id === id && o._fromYear === fromYear);
+    const op = state.ops.find(o => String(o.id) === String(id) && o._fromYear === fromYear);
     if (!op) return;
 
-    state.ops = state.ops.filter(o => !(o.id === id && o._fromYear === fromYear));
-    state.contracts = state.contracts.filter(c => c.opId !== id);
+    state.ops = state.ops.filter(o => !(String(o.id) === String(id) && o._fromYear === fromYear));
+    state.contracts = state.contracts.filter(c => String(c.opId) !== String(id));
 
     const block = state.allYears[fromYear];
     if (block) {
-      block.ops = block.ops.filter(o => o.id !== id);
-      Object.keys(state.allYears).forEach(yStr => {
-        const yb = state.allYears[yStr];
-        if (!yb || !yb.contracts) return;
-        yb.contracts = yb.contracts.filter(c => c.opId !== id);
-      });
+      block.ops = block.ops.filter(o => String(o.id) !== String(id));
+      // Solo eliminamos contratos vinculados del año donde vive la op
+      if (block.contracts) {
+        block.contracts = block.contracts.filter(c => String(c.opId) !== String(id));
+      }
     }
 
     FB.saveYear(fromYear, block);
@@ -1109,8 +1109,8 @@
       pct: parseFloat(pctEl.value) || 0
     };
 
-    if (id === 0) {
-      const newId = state.nextId++;
+    if (String(id) === '0') {
+      const newId = generateUniqueId();
       const newOp = Object.assign({
         id: newId,
         month: isNaN(selectedMonth) ? state.editingOp.month : selectedMonth,
@@ -1121,12 +1121,11 @@
         state.allYears[state.year] = { ops: [], contracts: [], goals: state.goals, nextId: state.nextId };
       }
       state.allYears[state.year].ops.push(newOp);
-      state.allYears[state.year].nextId = state.nextId;
       FB.saveYear(state.year, state.allYears[state.year]);
     } else {
       const block = state.allYears[fromYear];
       if (!block) return;
-      const op = block.ops.find(o => o.id === id);
+      const op = block.ops.find(o => String(o.id) === String(id));
       if (op) {
         Object.assign(op, payload);
         if (!isNaN(selectedMonth)) op.month = selectedMonth;
@@ -1156,6 +1155,9 @@
     renderResumen();
   };
 
+  // ⚠️ FIX: solo borra y guarda en el año de origen, no en todos los años.
+  // Antes recorría TODOS los años y podía borrar contratos con el mismo
+  // opId en años distintos (colisión de IDs entre 2025 y 2026).
   App.saveAddress = function (opId) {
     if (!state.canWrite) { showToast('modo solo lectura'); return; }
     const dateEl = document.getElementById('addr-date-' + opId);
@@ -1163,7 +1165,7 @@
     const valEl = document.getElementById('addr-val-' + opId);
     if (!dateEl || !addrEl || !valEl) { showToast('error: campos no encontrados'); return; }
 
-    const op = state.ops.find(o => o.id === opId);
+    const op = state.ops.find(o => String(o.id) === String(opId));
     if (!op) return;
     const fromYear = op._fromYear != null ? op._fromYear : state.year;
     const isRent = op.type === 'ALQUILER';
@@ -1181,20 +1183,19 @@
       entry.contract = contractEl ? (parseFloat(contractEl.value) || 0) : 0;
     }
 
-    Object.keys(state.allYears).forEach(yStr => {
-      const yb = state.allYears[yStr];
-      if (!yb || !yb.contracts) return;
-      yb.contracts = yb.contracts.filter(c => c.opId !== opId);
-    });
-
+    // Solo modificamos el bloque del año donde vive la op
     if (!state.allYears[fromYear]) {
       state.allYears[fromYear] = { ops: [], contracts: [], goals: {}, nextId: 1 };
     }
-    state.allYears[fromYear].contracts.push(entry);
+    const block = state.allYears[fromYear];
+    if (!block.contracts) block.contracts = [];
 
-    Object.keys(state.allYears).forEach(yStr => {
-      FB.saveYear(parseInt(yStr, 10), state.allYears[yStr]);
-    });
+    // Eliminamos solo el contrato de este opId en ESTE año
+    block.contracts = block.contracts.filter(c => String(c.opId) !== String(opId));
+    block.contracts.push(entry);
+
+    // Guardamos solo ese año
+    FB.saveYear(fromYear, block);
 
     state.editingAddressOpId = null;
     loadYear(state.year);

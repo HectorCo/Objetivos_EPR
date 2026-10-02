@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v21 - fix hoisting App)
+// Fincas Blanco - Aplicación principal (v22 - filtros sin tasación)
 (function () {
   'use strict';
 
@@ -26,6 +26,9 @@
       sortDir: 'asc'
     }
   };
+
+  // Tipos que aparecen en los botones de filtro (excluimos TASACIÓN)
+  const FILTER_TYPES = ['VENTA PISO', 'VENTA LOCAL', 'ALQUILER', 'VENTA PARKING'];
 
   // ===== HELPERS CROSS-YEAR =====
   function collectOpsForYear(year) {
@@ -436,7 +439,8 @@
 
     function renderTypeButtons() {
       if (!typesContainer) return;
-      const all = [['todas', 'todas']].concat(FB.TYPES.map(t => [t, FB.TYPE_LABELS[t]]));
+      // ⚠️ Filtramos TASACIÓN de los botones
+      const all = [['todas', 'todas']].concat(FILTER_TYPES.map(t => [t, FB.TYPE_LABELS[t]]));
       let html = '';
       all.forEach(([value, label]) => {
         const active = (state.filters.type === value);
@@ -989,7 +993,6 @@
   // ===== ACCIONES =====
   const App = {};
 
-  // ⚠️ Movido aquí (dentro del bloque App) para evitar el error de hoisting
   App.toggleSort = function (field) {
     if (!field) return;
     if (state.filters.sortField === field) {

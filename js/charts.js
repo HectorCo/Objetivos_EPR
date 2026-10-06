@@ -33,7 +33,8 @@
 
       const w = container.clientWidth || 600;
       const h = 200;
-      const pad = { top: 10, right: 10, bottom: 30, left: 60 };
+      // ⚠️ FIX: aumentamos pad.left para que quepan los importes con formato
+      const pad = { top: 10, right: 16, bottom: 30, left: 76 };
       const cw = Math.max(w - pad.left - pad.right, 10);
       const ch = h - pad.top - pad.bottom;
 
@@ -52,12 +53,18 @@
 
       const areaPath = actualPath + ' L ' + x(n - 1) + ' ' + (pad.top + ch) + ' L ' + x(0) + ' ' + (pad.top + ch) + ' Z';
 
+      // ⚠️ FIX: formateamos los valores del eje Y sin decimales ni símbolo €,
+      // usando separador de miles pero sin ".00" al final. Es más compacto.
+      const fmtAxis = (v) => {
+        return Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+      };
+
       let gridLines = '';
       for (let i = 0; i <= 5; i++) {
         const gv = (maxVal / 5) * i;
         const gy = y(gv);
         gridLines += '<line x1="' + pad.left + '" y1="' + gy + '" x2="' + (w - pad.right) + '" y2="' + gy + '" class="grid-line"/>';
-        gridLines += '<text x="' + (pad.left - 8) + '" y="' + (gy + 3) + '" text-anchor="end" class="axis-text">' + FB.fmt(gv) + '</text>';
+        gridLines += '<text x="' + (pad.left - 10) + '" y="' + (gy + 4) + '" text-anchor="end" class="axis-text">' + fmtAxis(gv) + '</text>';
       }
 
       let xLabels = '';
@@ -71,7 +78,9 @@
         dots += '<circle cx="' + x(i) + '" cy="' + y(v) + '" class="dot"/>';
       });
 
-      const svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none">'
+      // ⚠️ FIX: quitamos preserveAspectRatio="none" para evitar que el SVG
+      // deforme el texto al estirarse. Mantenemos el viewBox para que escale.
+      const svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">'
                 + gridLines
                 + '<path d="' + areaPath + '" class="area-actual"/>'
                 + '<path d="' + targetPath + '" class="line-target"/>'

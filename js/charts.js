@@ -26,19 +26,29 @@
       container.innerHTML = html;
     },
 
-    // Línea: acumulado vs objetivo
-    renderLineChart(containerId, actualData, targetData, labels) {
+    // Línea: progreso acumulado vs objetivo anual (con eje Y trimestral)
+    // - axisMax: valor máximo del eje Y (normalmente el objetivo anual).
+    //   El eje se divide en 5 líneas: 0, axisMax/4, axisMax/2, 3*axisMax/4, axisMax.
+    // - actualData: array con 12 valores (acumulado mensual real).
+    // - targetData: array con 12 valores (objetivo acumulado lineal mes a mes).
+    renderLineChart(containerId, actualData, targetData, labels, axisMax) {
       const container = document.getElementById(containerId);
       if (!container) return;
 
-      const w = container.clientWidth || 600;
+      const totalWidth = container.clientWidth || 600;
       const h = 200;
-      // ⚠️ FIX: aumentamos pad.left para que quepan los importes con formato
-      const pad = { top: 10, right: 16, bottom: 30, left: 76 };
+      const axisWidth = 76;  // ancho de la columna del eje Y (HTML externo)
+      const w = Math.max(totalWidth - axisWidth, 100);
+
+      const pad = { top: 10, right: 16, bottom: 30, left: 8 };
       const cw = Math.max(w - pad.left - pad.right, 10);
       const ch = h - pad.top - pad.bottom;
 
-      const maxVal = Math.max.apply(null, actualData.concat(targetData, [1]));
+      // ⚠️ El techo del eje Y SIEMPRE es axisMax (objetivo anual).
+      // Si no nos lo pasan, autocalculamos como fallback.
+      const autoMax = Math.max.apply(null, actualData.concat(targetData, [1]));
+      const maxVal = (axisMax && axisMax > 0) ? axisMax : autoMax;
+
       const n = actualData.length;
       if (n === 0) { container.innerHTML = ''; return; }
 
@@ -53,34 +63,29 @@
 
       const areaPath = actualPath + ' L ' + x(n - 1) + ' ' + (pad.top + ch) + ' L ' + x(0) + ' ' + (pad.top + ch) + ' Z';
 
-      // ⚠️ FIX: formateamos los valores del eje Y sin decimales ni símbolo €,
-      // usando separador de miles pero sin ".00" al final. Es más compacto.
-      const fmtAxis = (v) => {
-        return Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 });
-      };
+      const fmtAxis = (v) => Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 });
 
+      // Grid horizontal: 5 líneas equiespaciadas (0, 1/4, 2/4, 3/4, 4/4)
       let gridLines = '';
-      for (let i = 0; i <= 5; i++) {
-        const gv = (maxVal / 5) * i;
+      for (let i = 0; i <= 4; i++) {
+        const gv = (maxVal / 4) * i;
         const gy = y(gv);
         gridLines += '<line x1="' + pad.left + '" y1="' + gy + '" x2="' + (w - pad.right) + '" y2="' + gy + '" class="grid-line"/>';
-        gridLines += '<text x="' + (pad.left - 10) + '" y="' + (gy + 4) + '" text-anchor="end" class="axis-text">' + fmtAxis(gv) + '</text>';
       }
 
+      // Etiquetas X (meses)
       let xLabels = '';
-      const step = Math.max(1, Math.ceil(n / 12));
-      for (let i = 0; i < n; i += step) {
+      for (let i = 0; i < n; i++) {
         xLabels += '<text x="' + x(i) + '" y="' + (h - 8) + '" text-anchor="middle" class="axis-text">' + (labels[i] || '') + '</text>';
       }
 
+      // Puntos de la línea real
       let dots = '';
       actualData.forEach((v, i) => {
         dots += '<circle cx="' + x(i) + '" cy="' + y(v) + '" class="dot"/>';
       });
 
-      // ⚠️ FIX: quitamos preserveAspectRatio="none" para evitar que el SVG
-      // deforme el texto al estirarse. Mantenemos el viewBox para que escale.
-      const svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="xMidYMid meet">'
+      const svg = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" style="width:100%;height:' + h + 'px;">'
                 + gridLines
                 + '<path d="' + areaPath + '" class="area-actual"/>'
                 + '<path d="' + targetPath + '" class="line-target"/>'
@@ -89,7 +94,23 @@
                 + xLabels
                 + '</svg>';
 
-      container.innerHTML = '<div class="fb-line-chart">' + svg + '</div>';
+      // Eje Y como HTML externo (5 etiquetas: 0, 1/4, 2/4, 3/4, 4/4)
+      let yAxisHtml = '<div class="fb-line-y-axis" style="width:' + axisWidth + 'px;height:' + h + 'px;position:relative;">';
+      for (let i = 0; i <= 4; i++) {
+        const gv = (maxVal / 4) * i;
+        const gy = y(gv);
+        yAxisHtml += '<div style="position:absolute;right:8px;top:' + gy + 'px;transform:translateY(-50%);font-size:10px;color:var(--kimi-color-text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap;">'
+                   + fmtAxis(gv) + ' €</div>';
+      }
+      yAxisHtml += '</div>';
+
+      container.innerHTML =
+        '<div class="fb-line-chart" style="display:flex;align-items:flex-start;gap:0;">'
+        + yAxisHtml
+        + '<div style="flex:1;min-width:0;">'
+        +   '<div class="fb-line-chart-svg-wrap" style="position:relative;height:' + h + 'px;">' + svg + '</div>'
+        + '</div>'
+        + '</div>';
     },
 
     // Donut

@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v27 - auth timeout)
+// Fincas Blanco - Aplicación principal (v28 - gráfico con eje Y trimestral)
 (function () {
   'use strict';
 
@@ -268,8 +268,7 @@
       });
     });
 
-    // TIMEOUT DE SEGURIDAD: si en 8 segundos no se resuelve la sesión,
-    // forzar signOut y mostrar login
+    // TIMEOUT DE SEGURIDAD
     let authResolved = false;
     setTimeout(() => {
       if (!authResolved) {
@@ -1001,17 +1000,32 @@
     const esc = FB.getEscrituraByMonth(state.ops, state.year, state.contracts);
     const meses = FB.MONTHS_ESCRITURA;
 
+    // Acumulado real mes a mes
     const actualCumul = [];
-    const targetCumul = [];
     let acc = 0;
-    const monthlyTarget = state.goals.ingresos / 12;
-    meses.forEach((m, i) => {
+    meses.forEach(m => {
       acc += esc[m] || 0;
       actualCumul.push(acc);
+    });
+
+    // Objetivo acumulado: recta lineal de 0 a ingresos anuales, con 12 puntos
+    // (a final de mes). Empieza con 1/12 del total en enero y acaba con 12/12
+    // del total en diciembre.
+    const targetCumul = [];
+    const monthlyTarget = state.goals.ingresos / 12;
+    meses.forEach((m, i) => {
       targetCumul.push(monthlyTarget * (i + 1));
     });
 
-    FBCharts.renderLineChart('chart-line', actualCumul, targetCumul, meses.map(m => m.slice(0, 3)));
+    // ⚠️ Le pasamos el objetivo anual como techo del eje Y.
+    // El eje se dividirá en 5 líneas: 0, /4, /2, 3/4, /1
+    FBCharts.renderLineChart(
+      'chart-line',
+      actualCumul,
+      targetCumul,
+      meses.map(m => m.slice(0, 3)),
+      state.goals.ingresos
+    );
 
     const t = FB.getTotals(state.ops, state.year, state.contracts);
     FBCharts.renderDonut('chart-donut', [t.pisos, t.locales, t.alquileres], ['pisos', 'locales', 'alquileres']);

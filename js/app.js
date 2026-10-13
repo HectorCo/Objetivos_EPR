@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v28 - gráfico con eje Y trimestral)
+// Fincas Blanco - Aplicación principal (v29 - año escritura siempre visible)
 (function () {
   'use strict';
 
@@ -755,21 +755,26 @@
     }
   }
 
+  // ⚠️ CAMBIO: la columna "año escr." muestra SIEMPRE el año de escritura.
+  // - Si coincide con el de captación → gris discreto.
+  // - Si es posterior (cross-year futuro) → rojo negrita.
+  // - Si es anterior (cross-year pasado) → gris con nota "(capt. YYYY)".
   function getEscrituraCell(op) {
     const ey = FB.getEscrituraYear(op, state.year);
     const cy = FB.getCaptureYear(op, state.year);
     const mes = String(op.escritura || '').toLowerCase();
 
-    if (ey === cy) {
-      return '<td style="text-transform:capitalize">' + mes + '</td>'
-           + '<td class="center fb-muted">—</td>';
-    }
+    let yearCell = '';
     if (ey > cy) {
-      return '<td style="text-transform:capitalize">' + mes + '</td>'
-           + '<td class="center"><strong style="color:#dc2626">' + ey + '</strong></td>';
+      yearCell = '<strong style="color:#dc2626">' + ey + '</strong>';
+    } else if (ey < cy) {
+      yearCell = '<span class="fb-muted">' + ey + '</span> <span class="fb-muted" style="font-size:11px">(capt. ' + cy + ')</span>';
+    } else {
+      yearCell = '<span class="fb-muted">' + ey + '</span>';
     }
+
     return '<td style="text-transform:capitalize">' + mes + '</td>'
-         + '<td class="center"><span class="fb-muted" style="font-size:11px">(capt. ' + cy + ')</span></td>';
+         + '<td class="center">' + yearCell + '</td>';
   }
 
   function renderOpRow(op) {
@@ -1000,7 +1005,6 @@
     const esc = FB.getEscrituraByMonth(state.ops, state.year, state.contracts);
     const meses = FB.MONTHS_ESCRITURA;
 
-    // Acumulado real mes a mes
     const actualCumul = [];
     let acc = 0;
     meses.forEach(m => {
@@ -1008,17 +1012,12 @@
       actualCumul.push(acc);
     });
 
-    // Objetivo acumulado: recta lineal de 0 a ingresos anuales, con 12 puntos
-    // (a final de mes). Empieza con 1/12 del total en enero y acaba con 12/12
-    // del total en diciembre.
     const targetCumul = [];
     const monthlyTarget = state.goals.ingresos / 12;
     meses.forEach((m, i) => {
       targetCumul.push(monthlyTarget * (i + 1));
     });
 
-    // ⚠️ Le pasamos el objetivo anual como techo del eje Y.
-    // El eje se dividirá en 5 líneas: 0, /4, /2, 3/4, /1
     FBCharts.renderLineChart(
       'chart-line',
       actualCumul,

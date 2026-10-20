@@ -1,4 +1,4 @@
-// Fincas Blanco - Aplicación principal (v29 - año escritura siempre visible)
+// Fincas Blanco - Aplicación principal (v30 - tooltip dirección)
 (function () {
   'use strict';
 
@@ -29,7 +29,6 @@
 
   const FILTER_TYPES = ['VENTA PISO', 'VENTA LOCAL', 'ALQUILER', 'VENTA PARKING'];
 
-  // ===== GENERADOR DE IDs ÚNICOS GLOBALES =====
   function generateUniqueId() {
     return Date.now() + '_' + Math.floor(Math.random() * 1000);
   }
@@ -268,7 +267,6 @@
       });
     });
 
-    // TIMEOUT DE SEGURIDAD
     let authResolved = false;
     setTimeout(() => {
       if (!authResolved) {
@@ -755,10 +753,6 @@
     }
   }
 
-  // ⚠️ CAMBIO: la columna "año escr." muestra SIEMPRE el año de escritura.
-  // - Si coincide con el de captación → gris discreto.
-  // - Si es posterior (cross-year futuro) → rojo negrita.
-  // - Si es anterior (cross-year pasado) → gris con nota "(capt. YYYY)".
   function getEscrituraCell(op) {
     const ey = FB.getEscrituraYear(op, state.year);
     const cy = FB.getCaptureYear(op, state.year);
@@ -789,9 +783,20 @@
     const id = op.id;
     const fromYear = op._fromYear;
 
+    // ⚠️ NUEVO: buscamos la dirección asociada en el resumen
+    const linked = state.contracts.find(c => String(c.opId) === String(op.id)) || {};
+    const hasAddress = !!(linked.addr && String(linked.addr).trim());
+    const addressText = hasAddress ? linked.addr : 'sin dirección asignada';
+    const addressEscaped = String(addressText).replace(/"/g, '&quot;');
+    const tooltipClass = hasAddress ? 'fb-tooltip' : 'fb-tooltip fb-tooltip-empty';
+
     return '<tr>'
       + '<td class="fb-muted fb-xs">' + FB.MONTHS_SHORT[op.month] + '</td>'
-      + '<td><span class="fb-badge ' + badgeClass + '">' + (FB.TYPE_LABELS[op.type] || op.type.toLowerCase()) + '</span></td>'
+      + '<td class="fb-tipo-cell">'
+      +   '<span class="fb-badge ' + badgeClass + ' ' + tooltipClass + '" data-tooltip="' + addressEscaped + '">'
+      +     (FB.TYPE_LABELS[op.type] || op.type.toLowerCase())
+      +   '</span>'
+      + '</td>'
       + '<td class="center">' + FB.fmt0(op.qty) + '</td>'
       + '<td class="num">' + FB.fmt(op.honorarios) + '</td>'
       + getEscrituraCell(op)
